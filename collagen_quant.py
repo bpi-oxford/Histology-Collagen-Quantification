@@ -1,6 +1,11 @@
 from aicsimageio import AICSImage
 from aicsimageio.writers import OmeTiffWriter
 
+import aicspylibczi
+import pathlib
+
+import czifile
+
 from tqdm import tqdm
 import os
 
@@ -84,11 +89,14 @@ def stain_vector_separation_large(image, stain_color_map, stains, tile_size=2048
             else:
                 batch_size_ = batch_size
 
-            for i in tqdm(range(batch_size),desc="Loading tiles in batch {}".format(batch_id)):
+            for i in tqdm(range(batch_size_),desc="Loading tiles in batch {}".format(batch_id)):
                 tile_idx = batch_id*batch_size + i
                 if tile_idx < len(region_to_process):
                     row_start, row_end, col_start, col_end = region_to_process[tile_idx]
-                    region_to_process_chuck.append({"tile": image[row_start:row_end,col_start:col_end,:].compute(),"roi":(row_start,row_end,col_start,col_end)})
+                    if isinstance(image, np.ndarray):
+                        region_to_process_chuck.append({"tile": image[row_start:row_end,col_start:col_end,:],"roi":(row_start,row_end,col_start,col_end)})
+                    else:
+                        region_to_process_chuck.append({"tile": image[row_start:row_end,col_start:col_end,:].compute(),"roi":(row_start,row_end,col_start,col_end)})
                 else:
                     break
 
@@ -120,23 +128,99 @@ def stain_vector_separation_large(image, stain_color_map, stains, tile_size=2048
 
     return imDeconvolved
 
-def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1):
-    print("Loading AICSImage header...")
-    image = AICSImage(IMAGE_PATH)
-    print("Loading image dask data...")
-    image_dask = image.get_image_dask_data("XYS")
-
+def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample=10, preload_image=False, reconstruct_mosaic=True, reader="aicsimageio"):
     # Perform Stain Vector Separation
     # specify stains of input image
     stains = stain_color_map.keys()
+    
+    if reader == "aicsimageio":
+        print("Loading AICSImage header...")
+        image = AICSImage(IMAGE_PATH, reconstruct_mosaic=reconstruct_mosaic)
 
-    # # Load image 
-    # print("Loading image...")
-    # image_np = image_dask.compute()
+        if reconstruct_mosaic == False:
+            print(image.dims)
+            print(image.shape)
+            print(image.mosaic_tile_dims)
+            print(image.get_image_dask_data("XYS",M=1).shape)
+            print(image.get_mosaic_tile_positions())
+            exit()
+        else:
+            print("Loading image dask data...")
+            image_dask = image.get_image_dask_data("XYS")
 
-    # Color deconvolution
-    print("Performing color deconvolution")
-    imDeconvolved = stain_vector_separation_large(image_dask, stain_color_map, stains, tile_size=4096,threads=threads, batch_size=4)
+        # Load image 
+        if preload_image:
+            print("Loading image...")
+            image_np = image_dask.compute()
+
+            # Color deconvolution
+            print("Performing color deconvolution")
+            imDeconvolved = stain_vector_separation_large(image_np, stain_color_map, stains, tile_size=4096,threads=threads, batch_size=64)
+        else:
+            # Color deconvolution
+            print("Performing color deconvolution")
+            imDeconvolved = stain_vector_separation_large(image_dask, stain_color_map, stains, tile_size=4096,threads=threads, batch_size=64)
+    elif reader == "aicspylibczi":
+        print("Loading image...")
+        mosaic_file = pathlib.Path(IMAGE_PATH)
+        image_ = aicspylibczi.CziFile(mosaic_file)
+        image = AICSImage(IMAGE_PATH, reconstruct_mosaic=reconstruct_mosaic) # temp workaround for pixel size thing
+        # print(image.get_mosaic_scene_bounding_box().x, image.get_mosaic_scene_bounding_box().y, image.get_mosaic_scene_bounding_box().w, image.get_mosaic_scene_bounding_box().h)
+        
+        if reconstruct_mosaic:
+            # Mosaic files ignore the S dimension and use an internal mIndex to reconstruct, the scale factor allows one to generate a manageable image
+            image_np = image_.read_mosaic(C=0, scale_factor=1)
+            # Color deconvolution
+            print("Performing color deconvolution")
+            imDeconvolved = stain_vector_separation_large(image_np[0,:,:,:], stain_color_map, stains, tile_size=4096,threads=threads, batch_size=64)
+        else:
+            # manually read the tiled data
+            # print(image_.dims)
+            # print(image_.get_dims_shape())
+            # print((image_.get_mosaic_scene_bounding_box().h, image_.get_mosaic_scene_bounding_box().w,3,))
+            image_np = np.zeros((image_.get_mosaic_bounding_box().w, image_.get_mosaic_bounding_box().h,3), dtype=np.uint16)
+            image_np[0:10,0:5, :] = 1
+            tle_bboxes = image_.get_all_mosaic_tile_bounding_boxes()
+            for m, bbox in tqdm(enumerate(tle_bboxes.values()),desc="Reading tiles",total=len(tle_bboxes)):
+                # print("tile:", m)
+                tile = image_.read_mosaic((
+                    image_.get_mosaic_tile_bounding_box(M=m).x, 
+                    image_.get_mosaic_tile_bounding_box(M=m).y, 
+                    image_.get_mosaic_tile_bounding_box(M=m).w, 
+                    image_.get_mosaic_tile_bounding_box(M=m).h
+                ), C=0)
+                # print("mosaic tile:", image_.get_mosaic_tile_bounding_box(M=m).x, image_.get_mosaic_tile_bounding_box(M=m).y, image_.get_mosaic_tile_bounding_box(M=m).w, image_.get_mosaic_tile_bounding_box(M=m).h)
+                # print(tile.shape)
+                x_start =  bbox.x
+                x_end = bbox.x+bbox.w
+                y_start = bbox.y
+                y_end = bbox.y+bbox.h
+                # print("bounds: ",x_start, x_end, y_start, y_end)
+                image_np[x_start:x_end, y_start:y_end, :] = np.transpose(tile[0,:,:,:],(1,0,2)).astype(np.uint16)
+
+                # if m > 50:
+                #     break
+
+            # Color deconvolution
+            print("Performing color deconvolution")
+            imDeconvolved = stain_vector_separation_large(image_np, stain_color_map, stains, tile_size=4096,threads=threads, batch_size=64)
+
+            # # save the deconvolved image
+            # image_basename = IMAGE_PATH.split(os.sep)[-1].split(".")[0]
+            # outpath = os.path.join(OUTPUT_DIR,"{}_test.tif".format(image_basename))
+            # writer = OmeTiffWriter()
+            # # only save PSR channel
+            # writer.save(image_np[::10,::10,:].astype(np.uint16).T,outpath,
+            #             physical_pixel_sizes=image.physical_pixel_sizes,
+            #             dim_order="CYX",
+            # )
+            # exit()
+
+    elif reader == "czifile":
+        print("Loading image...")
+        image = czifile.imread(IMAGE_PATH)
+
+        imDeconvolved = stain_vector_separation_large(image, stain_color_map, stains, tile_size=4096,threads=threads, batch_size=64)
 
     # save the deconvolved image
     image_basename = IMAGE_PATH.split(os.sep)[-1].split(".")[0]
@@ -151,11 +235,15 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1):
                     dim_order="YX",
                     )
     
+    print("Save color deconvolved PSR channel complete")
+    
     # Tissue Mask
     psr_image = imDeconvolved[:,:,0]
     # Down sample for quick computation
     if not isinstance(psr_image,np.ndarray):
-        psr_image_subsampled = psr_image[::10,::10].compute()
+        psr_image_subsampled = psr_image[::subsample,::subsample].compute()
+    else:
+        psr_image_subsampled = psr_image[::subsample,::subsample]
 
     # otsu thresholding
     thresholds = threshold_multiotsu(psr_image_subsampled,classes=3)
@@ -178,7 +266,7 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1):
     psr_image_filtered = np.copy(psr_image)
     psr_image_filtered[filled_tissue_mask==0] = 0
 
-    PERCENTILE = 5
+    PERCENTILE = 10
 
     psr_image_filtered_lin = psr_image_filtered.ravel()
     psr_image_filtered_lin = psr_image_filtered_lin[psr_image_filtered_lin != 0]
@@ -244,40 +332,61 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1):
     )
 
 def main():
-    DATA_DIR = "/media/Data3/Jacky/Data/Dafni_lung_slide_scans/Mouse"
+    # DATA_DIR = "/media/Data3/Jacky/Data/Dafni_lung_slide_scans/Mouse"
     # DATA_DIR = "/media/Data3/Jacky/Data/Dafni_lung_slide_scans/Human"
+    DATA_DIR = "/media/jackyko/FOR NAN/01_08_23 PSR and H&E/Human/PSR_cropped"
 
+    # mouse
+    # stain_color_map = {
+    #     'PSR': [0.496,0.712,0.497],
+    #     'FG': [0.802,0.201,0.562],
+    #     'Residual': [-0.525,-0.21,0.825]
+    # }
+    # background = [207,209,206]
+
+    # human
     stain_color_map = {
-        'PSR': [0.496,0.712,0.497],
-        'FG': [0.802,0.201,0.562],
-        'Residual': [-0.525,-0.21,0.825]
+        'PSR': [0.376,0.787,0.489],
+        'FG': [0.943,0.217,0.254],
+        'Residual': [0.123,0.480,-0.868]
     }
     background = [207,209,206]
 
-    suffices = [
-        # ("Mouse_female2-013_w16/s1/Mouse-week16-Fem2-013-PSR_s1.czi","/Mouse_female2-013_w16/s1"),
-        # ("Mouse_female2-013_w16/s2/Mouse-week16-Fem2-013-PSR_s2.czi","/Mouse_female2-013_w16/s2"),
-        # ("Mouse_female2-013_w16/s4/Mouse-week16-Fem2-013-PSR_s4.czi","/Mouse_female2-013_w16/s4"),
+    # suffices = [
+        # ("Mouse_female2-013_w16/s1/Mouse-week16-Fem2-013-PSR_s1.czi","Mouse_female2-013_w16/s1"),
+        # ("Mouse_female2-013_w16/s2/Mouse-week16-Fem2-013-PSR_s2.czi","Mouse_female2-013_w16/s2"),
+        # ("Mouse_female2-013_w16/s4/Mouse-week16-Fem2-013-PSR_s4.czi","Mouse_female2-013_w16/s4"),
         # ("Mouse_male1_w16/s1/Mouse-week16-male1-028-PSR_s1.czi","Mouse_male1_w16/s1"),
         # ("Mouse_male1_w16/s2/Mouse-week16-male1-028-PSR_s2.czi","Mouse_male1_w16/s2"),
         # ("Mouse_male2_w16/s1/Mouse-week16-Male2-013-PSR_s1.czi","Mouse_male2_w16/s1"),
         # ("Mouse_male2_w16/s2/Mouse-week16-Male2-013-PSR_s2.czi","Mouse_male2_w16/s2"),
         # ("Mouse_male2_w16/s3/Mouse-week16-Male2-013-PSR_s3.czi","Mouse_male2_w16/s3"),
-        # ("Mouse_male3_w16/s1/Mouse-week16-Male3-013-lung-PSR_s1.czi","Mouse_male3_w16/s1"),
+        # ("Mouse_male3_w16/s1/Mouse-week16-Male3-013-lung-PSR_s1.czi","Mouse_male3_w16/s1_2"),
         # ("Mouse_male3_w16/s2/Mouse-week16-Male3-013-lung-PSR_s2.czi","Mouse_male3_w16/s2"),
-        ("Mouse_male3_w16/s3/Mouse-week16-Male3-013-lung-PSR_s3.czi","Mouse_male3_w16/s3_2"),
-        # ("21P00124-A4-001-A4-M-less-PSR.czi","21P00124-A4-001-A4-M-less-PSR"),
-        # ("21P00124-B8-002-M-adv-PSR.czi ","21P00124-B8-002-M-adv-PSR"),
-        # ("21P014858-E5-006-normal-PSR.czi ","21P014858-E5-006-normal-PSR"),
+        # ("Mouse_male3_w16/s3/Mouse-week16-Male3-013-lung-PSR_s3.czi","Mouse_male3_w16/s3_2"),
+        # ("21P00124-A4-001-A4-M-less-PSR/21P00124-A4-001-A4-M-less-PSR.czi","21P00124-A4-001-A4-M-less-PSR"),
+        # ("21P00124-B8-002-M-adv-PSR/21P00124-B8-002-M-adv-PSR.czi","21P00124-B8-002-M-adv-PSR"),
+        # ("21P014858-E5-006-normal-PSR/21P014858-E5-006-normal-PSR.czi","21P014858-E5-006-normal-PSR"),
+    # ]
+
+    suffices = [
+        # ("test/21P00124-B8-002-M-adv-PSR-Create Image Subset-01-Create Image Subset-01.czi","test")
     ]
 
-    for s in suffices:
+    for case in os.listdir(DATA_DIR):
+        # if "adv" not in case:
+        #     continue
+        for file in os.listdir(os.path.join(DATA_DIR,case)):
+            if file.split(".")[-1] == "czi":
+                suffices.append((os.path.join(case,file),os.path.join(case,file.split(".")[0])))
+
+    for s in suffices[0:]:
         IMAGE_PATH = os.path.join(DATA_DIR,s[0])
         OUTPUT_DIR = os.path.join(DATA_DIR,s[1])
 
         os.makedirs(OUTPUT_DIR,exist_ok=True)
         print("Processing image: ",IMAGE_PATH)
-        collagen_quant(IMAGE_PATH,OUTPUT_DIR, stain_color_map, threads=multiprocessing.cpu_count())
+        collagen_quant(IMAGE_PATH,OUTPUT_DIR, stain_color_map, threads=multiprocessing.cpu_count(), subsample=10, preload_image=True, reader="aicspylibczi", reconstruct_mosaic=False)
 
 if __name__ == "__main__":
     main()
