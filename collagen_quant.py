@@ -128,7 +128,7 @@ def stain_vector_separation_large(image, stain_color_map, stains, tile_size=2048
 
     return imDeconvolved
 
-def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample=10, preload_image=False, reconstruct_mosaic=True, reader="aicsimageio"):
+def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample=10, threshold=None, threshold_method="manual", preload_image=False, reconstruct_mosaic=True, reader="aicsimageio"):
     # Perform Stain Vector Separation
     # specify stains of input image
     stains = stain_color_map.keys()
@@ -266,16 +266,20 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample
     psr_image_filtered = np.copy(psr_image)
     psr_image_filtered[filled_tissue_mask==0] = 0
 
-    PERCENTILE = 10
+    if threshold_method == "percentile":
+        PERCENTILE = 10
 
-    psr_image_filtered_lin = psr_image_filtered.ravel()
-    psr_image_filtered_lin = psr_image_filtered_lin[psr_image_filtered_lin != 0]
+        psr_image_filtered_lin = psr_image_filtered.ravel()
+        psr_image_filtered_lin = psr_image_filtered_lin[psr_image_filtered_lin != 0]
 
-    percentile = np.percentile(psr_image_filtered_lin,PERCENTILE)
-    print("Percentile threshold value: ", percentile)
+        threshold = np.percentile(psr_image_filtered_lin,PERCENTILE)
+        print("Percentile threshold value: ", threshold)
+    elif threshold == "manual":
+        if threshold is None:
+            raise ValueError("Manual threshold need to provide a value, None is given")
 
     collagen = np.zeros_like(psr_image_filtered,dtype=np.uint8)
-    collagen[(psr_image_filtered>0) & (psr_image_filtered<percentile)] = 1
+    collagen[(psr_image_filtered>0) & (psr_image_filtered<threshold)] = 1
     
     ## Area Quantification
     pixel_size = image.physical_pixel_sizes.X*image.physical_pixel_sizes.Y
@@ -386,7 +390,7 @@ def main():
 
         os.makedirs(OUTPUT_DIR,exist_ok=True)
         print("Processing image: ",IMAGE_PATH)
-        collagen_quant(IMAGE_PATH,OUTPUT_DIR, stain_color_map, threads=multiprocessing.cpu_count(), subsample=10, preload_image=True, reader="aicspylibczi", reconstruct_mosaic=False)
+        collagen_quant(IMAGE_PATH,OUTPUT_DIR, stain_color_map, threads=multiprocessing.cpu_count(), subsample=10,threshold=60, threshold_method="manual", preload_image=True, reader="aicspylibczi", reconstruct_mosaic=False)
 
 if __name__ == "__main__":
     main()
