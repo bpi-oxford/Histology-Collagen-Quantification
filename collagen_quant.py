@@ -183,12 +183,17 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample
             tle_bboxes = image_.get_all_mosaic_tile_bounding_boxes()
             for m, bbox in tqdm(enumerate(tle_bboxes.values()),desc="Reading tiles",total=len(tle_bboxes)):
                 # print("tile:", m)
-                tile = image_.read_mosaic((
-                    image_.get_mosaic_tile_bounding_box(M=m).x, 
-                    image_.get_mosaic_tile_bounding_box(M=m).y, 
-                    image_.get_mosaic_tile_bounding_box(M=m).w, 
-                    image_.get_mosaic_tile_bounding_box(M=m).h
-                ), C=0)
+
+                # masaic reading fail for 21P00124-B8-002-M-adv-PSR/21P00124-B8-002-M-adv-PSR-Create Image Subset-05.czi, temporary work around
+                try:
+                    tile = image_.read_mosaic((
+                        image_.get_mosaic_tile_bounding_box(M=m).x, 
+                        image_.get_mosaic_tile_bounding_box(M=m).y, 
+                        image_.get_mosaic_tile_bounding_box(M=m).w, 
+                        image_.get_mosaic_tile_bounding_box(M=m).h
+                    ), C=0)
+                except:
+                    continue
                 # print("mosaic tile:", image_.get_mosaic_tile_bounding_box(M=m).x, image_.get_mosaic_tile_bounding_box(M=m).y, image_.get_mosaic_tile_bounding_box(M=m).w, image_.get_mosaic_tile_bounding_box(M=m).h)
                 # print(tile.shape)
                 x_start =  bbox.x
@@ -196,7 +201,27 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample
                 y_start = bbox.y
                 y_end = bbox.y+bbox.h
                 # print("bounds: ",x_start, x_end, y_start, y_end)
-                image_np[x_start:x_end, y_start:y_end, :] = np.transpose(tile[0,:,:,:],(1,0,2)).astype(np.uint16)
+                try:
+                    image_np[x_start:x_end, y_start:y_end, :] = np.transpose(tile[0,:,:,:],(1,0,2)).astype(np.uint16)
+                except Exception as error:
+                    """ 
+                    error to handle:
+                    Processing image:  /media/jackyko/FOR NAN/01_08_23 PSR and H&E/Human/PSR_cropped/21P00124-B8-002-M-adv-PSR/21P00124-B8-002-M-adv-PSR-Create Image Subset-05.czi
+                    Loading image...
+                    Reading tiles:   3%|██                                                                                | 1/39 [00:00<00:02, 17.49it/s]
+                    Traceback (most recent call last):
+                    File "/home/jackyko/Projects/lung_histology/collagen_quant.py", line 401, in <module>
+                        main()
+                    File "/home/jackyko/Projects/lung_histology/collagen_quant.py", line 398, in main
+                        collagen_quant(IMAGE_PATH,OUTPUT_DIR, stain_color_map, threads=multiprocessing.cpu_count(), subsample=10,threshold=60, threshold_method="manual", preload_image=True, reader="aicspylibczi", reconstruct_mosaic=False)
+                    File "/home/jackyko/Projects/lung_histology/collagen_quant.py", line 204, in collagen_quant
+                        image_np[x_start:x_end, y_start:y_end, :] = np.transpose(tile[0,:,:,:],(1,0,2)).astype(np.uint16)
+                    ValueError: could not broadcast input array from shape (2056,741,3) into shape (2056,743,3)
+                    """ 
+                    print("Error case:", IMAGE_PATH)
+                    print("Tile:", m)
+                    print(error)
+                    continue
 
                 # if m > 50:
                 #     break
@@ -384,7 +409,8 @@ def main():
             if file.split(".")[-1] == "czi":
                 suffices.append((os.path.join(case,file),os.path.join(case,file.split(".")[0])))
 
-    for s in suffices[0:]:
+    # can be safer to run in batches
+    for s in suffices[0:15]:
         IMAGE_PATH = os.path.join(DATA_DIR,s[0])
         OUTPUT_DIR = os.path.join(DATA_DIR,s[1])
 
