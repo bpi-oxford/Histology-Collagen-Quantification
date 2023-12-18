@@ -299,9 +299,14 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample
 
         threshold = np.percentile(psr_image_filtered_lin,PERCENTILE)
         print("Percentile threshold value: ", threshold)
-    elif threshold == "manual":
+    elif threshold_method == "manual":
         if threshold is None:
             raise ValueError("Manual threshold need to provide a value, None is given")
+    elif threshold_method == "multiotsu":
+        print("Calculating multiple Otsu values...")
+        thresholds = threshold_multiotsu(psr_image_filtered,classes=3)
+        threshold = thresholds[0]
+        print("Otsu threshold value: ", threshold)
 
     collagen = np.zeros_like(psr_image_filtered,dtype=np.uint8)
     collagen[(psr_image_filtered>0) & (psr_image_filtered<threshold)] = 1
@@ -403,20 +408,20 @@ def main():
     ]
 
     for case in os.listdir(DATA_DIR):
-        # if "adv" not in case:
-        #     continue
+        if "adv" not in case:
+            continue
         for file in os.listdir(os.path.join(DATA_DIR,case)):
             if file.split(".")[-1] == "czi":
                 suffices.append((os.path.join(case,file),os.path.join(case,file.split(".")[0])))
 
     # can be safer to run in batches
-    for s in suffices[0:15]:
+    for s in suffices[0:3]:
         IMAGE_PATH = os.path.join(DATA_DIR,s[0])
         OUTPUT_DIR = os.path.join(DATA_DIR,s[1])
 
         os.makedirs(OUTPUT_DIR,exist_ok=True)
         print("Processing image: ",IMAGE_PATH)
-        collagen_quant(IMAGE_PATH,OUTPUT_DIR, stain_color_map, threads=multiprocessing.cpu_count(), subsample=10,threshold=60, threshold_method="manual", preload_image=True, reader="aicspylibczi", reconstruct_mosaic=False)
+        collagen_quant(IMAGE_PATH,OUTPUT_DIR, stain_color_map, threads=multiprocessing.cpu_count(), subsample=10,threshold=60, threshold_method="multiotsu", preload_image=True, reader="aicspylibczi", reconstruct_mosaic=False)
 
 if __name__ == "__main__":
     main()
