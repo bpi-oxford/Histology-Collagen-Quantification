@@ -304,7 +304,8 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample
             raise ValueError("Manual threshold need to provide a value, None is given")
     elif threshold_method == "multiotsu":
         print("Calculating multiple Otsu values...")
-        thresholds = threshold_multiotsu(psr_image_filtered,classes=3)
+        thresholds = threshold_multiotsu(psr_image_filtered[::4,::4],classes=3) # full size requires high memory usage, consistency not tested
+        # thresholds = threshold_multiotsu(psr_image_filtered,classes=3)
         threshold = thresholds[0]
         print("Otsu threshold value: ", threshold)
 
@@ -338,6 +339,7 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample
     # save the deconvolved image
     image_basename = IMAGE_PATH.split(os.sep)[-1].split(".")[0]
 
+    print("Saving collagen region...")
     outpath = os.path.join(OUTPUT_DIR,"{}_label_collagen.tif".format(image_basename))
     writer = OmeTiffWriter()
     # only save PSR channel
@@ -346,7 +348,10 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample
                 physical_pixel_sizes=image.physical_pixel_sizes,
                 dim_order="YX",
                 )
+    # memory cleanup
+    del collagen_
 
+    print("Saving tissue region...")
     outpath = os.path.join(OUTPUT_DIR,"{}_label_tissue.tif".format(image_basename))
     writer = OmeTiffWriter()
     # only save PSR channel
@@ -355,7 +360,10 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample
                 physical_pixel_sizes=image.physical_pixel_sizes,
                 dim_order="YX",
     )
+    # memory cleanup
+    del tissue_mask_
 
+    print("Saving filled tissue region...")
     outpath = os.path.join(OUTPUT_DIR,"{}_label_filled_tissue.tif".format(image_basename))
     writer = OmeTiffWriter()
     # only save PSR channel
@@ -364,6 +372,10 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample
                 physical_pixel_sizes=image.physical_pixel_sizes,
                 dim_order="YX",
     )
+    # memory cleanup
+    del filled_tissue_mask_
+
+    print("Saving output complete")
 
 def main():
     # DATA_DIR = "/media/Data3/Jacky/Data/Dafni_lung_slide_scans/Mouse"
@@ -408,14 +420,31 @@ def main():
     ]
 
     for case in os.listdir(DATA_DIR):
-        if "adv" not in case:
-            continue
+        # if "less" not in case:
+        #     continue
         for file in os.listdir(os.path.join(DATA_DIR,case)):
             if file.split(".")[-1] == "czi":
                 suffices.append((os.path.join(case,file),os.path.join(case,file.split(".")[0])))
 
     # can be safer to run in batches
-    for s in suffices[0:3]:
+    # BATCH = 1 
+    # BATCH_SIZE = 15
+    # start = BATCH*BATCH_SIZE
+    # end = (BATCH+1)*BATCH_SIZE
+
+    # if start >= len(suffices):
+    #     print("Start number > number of files")
+    #     return
+
+    # if end > len(suffices):
+    #     end = len(suffices)
+
+    # start = 0
+    # end = -1
+    start = 60
+    end = -1
+
+    for s in suffices[start:end]:
         IMAGE_PATH = os.path.join(DATA_DIR,s[0])
         OUTPUT_DIR = os.path.join(DATA_DIR,s[1])
 
