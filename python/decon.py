@@ -31,23 +31,21 @@ def is_valid_file_or_directory(path):
 def get_args():
     parser = argparse.ArgumentParser(prog="decon",
                             description="WSI color deconvolution tool")
-    # Add input path argument
     parser.add_argument(
         "-i", "--input", 
         dest="input",
         help="Path to the input CZI file",
         metavar="PATH",
         type=is_valid_file_or_directory,
+        required=True
         )
-
-    # Add output directory argument
-    # Add input path argument
     parser.add_argument(
         "-o", "--output", 
         dest="output",
         help="Path to the output directory",
         metavar="DIR",
         type=is_valid_file_or_directory,
+        required=True
         )
 
     return parser.parse_args()
@@ -363,9 +361,10 @@ def pyramidal_ome_tiff_write(image, path, resX=1.0, resY=1.0, units="µm", tile_
         )
 
 def main(args):
-    IMG_PATH = "/media/Data3/Jacky/Data/Dafni_lung_slide_scans/Human/21P00655-A7-025-M-Adv-PSR.czi"
-    OUTPUT_DIR = "/media/Data3/Jacky/Data/Dafni_lung_slide_scans/Human/21P00655-A7-025-M-Adv-PSR"
+    IMG_PATH = args.input
+    OUTPUT_DIR = args.output
     OUT_TYPE = "TIFF" # TIFF/ZARR
+    SCALING = 1
 
     # read image headers
     image_ = AICSImage(IMG_PATH, reconstruct_mosaic=False)
@@ -382,10 +381,14 @@ def main(args):
         'Residual': [0.123,0.480,-0.868]
     }
 
-    imDeconvolved = stain_vector_separation_large(image_np[::5,::5,:], stain_color_map, stains=stain_color_map.keys(), tile_size=4096,threads=multiprocessing.cpu_count(), batch_size=64)
+    # TODO: auto setting of the subscaling factor based on image size
+    imDeconvolved = stain_vector_separation_large(image_np[::SCALING,::SCALING,:], stain_color_map, stains=stain_color_map.keys(), tile_size=4096,threads=multiprocessing.cpu_count(), batch_size=64)
     
+    # remove redundant data to keep low memory
+    del image_np
+
     # background removal
-    psr_image_filtered = psr_background_removal(imDeconvolved,subscaling=20)
+    psr_image_filtered = psr_background_removal(imDeconvolved,subscaling=int(100/SCALING))
     
     # save color deconvolved image
     os.makedirs(OUTPUT_DIR,exist_ok=True)
@@ -396,7 +399,7 @@ def main(args):
 
     if OUT_TYPE == "TIFF":
         image_path = os.path.join(OUTPUT_DIR,"color_decon.ome.tiff")
-        pyramidal_ome_tiff_write(imDeconvolved, image_path, resX=pps.X, resY=pps.Y,channel_colors=channel_colors_int)
+        pyramidal_ome_tiff_write(imDeconvolved, image_path, resX=pps.X*SCALING, resY=pps.Y*SCALING,channel_colors=channel_colors_int)
 
         # output background removed psr channel only
         image_path = os.path.join(OUTPUT_DIR,"PSR.ome.tiff")
