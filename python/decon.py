@@ -2,8 +2,10 @@ from aicsimageio.writers.ome_tiff_writer import OmeTiffWriter
 from aicsimageio.writers.ome_zarr_writer import OmeZarrWriter
 from aicsimageio import AICSImage, types
 import aicspylibczi
+import pyvips
 import pathlib
 import histomicstk as htk
+from ome_types.model import OME, Image, Pixels, Channel
 
 from tqdm import tqdm
 import numpy as np
@@ -11,9 +13,6 @@ from skimage.transform import resize
 from skimage.filters import threshold_multiotsu
 from skimage import exposure
 from scipy import ndimage
-
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 
 import multiprocessing
 from multiprocessing import Pool
@@ -23,10 +22,34 @@ import os
 import shutil
 import argparse
 
+def is_valid_file_or_directory(path):
+    """Check if the given path is a valid file or directory."""
+    if not os.path.exists(path):
+        raise argparse.ArgumentTypeError(f"Path '{path}' does not exist.")
+    return path
+
 def get_args():
     parser = argparse.ArgumentParser(prog="decon",
                             description="WSI color deconvolution tool")
-    
+    # Add input path argument
+    parser.add_argument(
+        "-i", "--input", 
+        dest="input",
+        help="Path to the input CZI file",
+        metavar="PATH",
+        type=is_valid_file_or_directory,
+        )
+
+    # Add output directory argument
+    # Add input path argument
+    parser.add_argument(
+        "-o", "--output", 
+        dest="output",
+        help="Path to the output directory",
+        metavar="DIR",
+        type=is_valid_file_or_directory,
+        )
+
     return parser.parse_args()
 
 def read_tile(args):
@@ -182,7 +205,60 @@ def stain_vector_separation_large(image, stain_color_map, stains, tile_size=2048
 
     return imDeconvolved
 
-def background_removal(imDeconvolved, subscaling=100):
+def tiled_resize(image, target_size=None, out_tile_size=2048,anti_aliasing=True, verbose=False):
+    # Calculate the new dimensions
+    aspect_ratio = image.shape[0] / image.shape[1]
+    new_width, new_height = target_size
+
+    # Create a blank image with the new dimensions
+    new_image = np.zeros(target_size)
+
+    # Calculate the number of tiles in both dimensions
+    num_horizontal_tiles = (new_width + out_tile_size - 1) // out_tile_size
+    num_vertical_tiles = (new_height + out_tile_size - 1) // out_tile_size
+
+    # Loop through each tile
+    pbar = tqdm(desc="Tiled upsizing", total=num_horizontal_tiles*num_vertical_tiles)
+    for y in range(num_vertical_tiles):
+        for x in range(num_horizontal_tiles):
+            # Calculate the region for the current tile
+            left = x * out_tile_size
+            lower = y * out_tile_size
+            right = min((x + 1) * out_tile_size, new_width)
+            upper = min((y + 1) * out_tile_size, new_height)
+
+            # Calculate the corresponding region in the original image
+            original_left = int(np.ceil(left / new_width * image.shape[0]))
+            original_upper = int(np.ceil(upper / new_height * image.shape[1]))
+            original_right = int(np.ceil(right / new_width * image.shape[0]))
+            original_lower = int(np.ceil(lower / new_height * image.shape[1]))
+
+            if verbose:
+                tqdm.write("original: ({}, {}, {}, {})".format(original_left, original_right, original_lower, original_upper))
+                tqdm.write("resampled: ({}, {}, {}, {})".format(left, right, lower, upper))
+            exact_resize_shape = (
+                right / new_width * image.shape[0]-left / new_width * image.shape[0],
+                upper / new_height * image.shape[1]-lower / new_height * image.shape[1],
+            )
+            error_x = ((original_right-original_left)- exact_resize_shape[0])/exact_resize_shape[0]*100
+            error_y = ((original_upper-original_lower)- exact_resize_shape[1])/exact_resize_shape[1]*100
+            if verbose:
+                tqdm.write("tile resize error x: {:.2f}%".format(error_x))
+                tqdm.write("tile resize error y: {:.2f}%".format(error_y) )
+
+            # Crop, resize, and paste the region onto the new image
+            region = image[original_left:original_right, original_lower:original_upper]
+            
+            # TODO: provide option for parallel processing, remind to consider memory consumption
+            region = resize(region, (right-left,upper-lower), anti_aliasing=anti_aliasing)
+
+            new_image[left:right, lower:upper] = region
+            pbar.update(1)
+
+    return new_image
+
+def psr_background_removal(imDeconvolved, subscaling=100):
+    print("Performing background removal on PSR channel...")
     # Tissue Mask
     psr_image = imDeconvolved[:,:,0]
     # Down sample for quick computation
@@ -191,6 +267,7 @@ def background_removal(imDeconvolved, subscaling=100):
     else:
         psr_image_subsampled = psr_image[::subscaling,::subscaling]
 
+    print("Running Otsu multiple thresholding...")
     # otsu thresholding
     thresholds = threshold_multiotsu(psr_image_subsampled,classes=3)
 
@@ -200,13 +277,16 @@ def background_removal(imDeconvolved, subscaling=100):
     tissue_mask_subsampled = regions
     tissue_mask_subsampled[tissue_mask_subsampled!=1] = 0
 
+    print("Filling tissue mask...")
     filled_tissue_mask_subsampled = tissue_mask_subsampled
     filled_tissue_mask_subsampled = ndimage.binary_closing(filled_tissue_mask_subsampled, structure=np.ones((25,25))).astype(int)
     filled_tissue_mask_subsampled = ndimage.binary_fill_holes(filled_tissue_mask_subsampled, structure=np.ones((5,5))).astype(int)
 
     # rescale mask back to original dim
-    tissue_mask = resize(tissue_mask_subsampled.astype(bool), psr_image.shape,anti_aliasing=False)
-    filled_tissue_mask = resize(filled_tissue_mask_subsampled.astype(bool), psr_image.shape,anti_aliasing=False)
+    # tissue_mask = resize(tissue_mask_subsampled.astype(bool), psr_image.shape,anti_aliasing=False)
+    print("Upsizing filled tissue mask to full scale...")
+    # filled_tissue_mask = resize(filled_tissue_mask_subsampled.astype(bool), psr_image.shape,anti_aliasing=False)
+    filled_tissue_mask = tiled_resize(filled_tissue_mask_subsampled.astype(bool), psr_image.shape,anti_aliasing=False)
 
     # mask the original data
     psr_image_filtered = np.copy(psr_image)
@@ -214,10 +294,78 @@ def background_removal(imDeconvolved, subscaling=100):
 
     return psr_image_filtered
 
+def pyramidal_ome_tiff_write(image, path, resX=1.0, resY=1.0, units="µm", tile_size=2048, channel_colors=None):
+    """
+    Pyramidal ome tiff write is only support in 2D + C data.
+    Input dimension order has to be XYC
+    """
+
+    assert len(image.shape) == 3, "Input dimension order must be XYC, get array dimension of {}".format(len(image.shape)) 
+
+    size_x, size_y, size_c = image.shape
+    
+    if image.dtype == np.uint8:
+        format = "uchar"
+        data_type = "uint8"
+    elif image.dtype == np.uint16:
+        format = "ushort"
+        data_type = "uint16"
+    else:
+        raise TypeError(f"Expected an uint8 or uint16 image, but received {image.dtype}")
+
+    im_vips = pyvips.Image.new_from_memory(image.transpose(1,0,2).reshape(-1,size_c).tobytes(), size_x, size_y, bands=size_c, format=format) 
+    im_vips = pyvips.Image.arrayjoin(im_vips.bandsplit(), across=1) # for multichannel write
+    im_vips.set_type(pyvips.GValue.gint_type, "page-height", size_y)
+
+    # build minimal OME metadata
+    ome = OME()
+
+    if channel_colors is None:
+        channel_colors = [-1 for _ in range(size_c)]
+
+    img = Image(
+        id="Image:0",
+        name="resolution_1",
+        pixels=Pixels(
+            id="Pixels:0", type=data_type, dimension_order="XYZTC",
+            size_c=size_c, size_x=size_x, size_y=size_y, size_z=1, size_t=1, 
+            big_endian=False, metadata_only=True,
+            physical_size_x=resX,
+            physical_size_x_unit=units,
+            physical_size_y=resY,
+            physical_size_y_unit=units,
+            channels= [Channel(id=f"Channel:0:{i}", name=f"Ch_{i}", color=channel_colors[i]) for i in range(size_c)]
+        )
+    )
+
+    ome.images.append(img)
+
+
+    def eval_cb(image, progress):
+        pbar_filesave.update(progress.percent - pbar_filesave.n)
+
+    im_vips.set_progress(True)
+
+    pbar_filesave = tqdm(total=100, unit="Percent", desc="Writing pyramidal OME TIFF", position=0, leave=True)
+    im_vips.signal_connect('eval', eval_cb)
+    im_vips.set_type(pyvips.GValue.gstr_type, "image-description", ome.to_xml())
+
+    im_vips.write_to_file(
+        path, 
+        compression="lzw",
+        tile=True, 
+        tile_width=tile_size,
+        tile_height=tile_size,
+        pyramid=True,
+        depth="onetile",
+        subifd=True,
+        bigtiff=True
+        )
+
 def main(args):
     IMG_PATH = "/media/Data3/Jacky/Data/Dafni_lung_slide_scans/Human/21P00655-A7-025-M-Adv-PSR.czi"
     OUTPUT_DIR = "/media/Data3/Jacky/Data/Dafni_lung_slide_scans/Human/21P00655-A7-025-M-Adv-PSR"
-    OUT_TYPE = "ZARR" # TIFF/ZARR
+    OUT_TYPE = "TIFF" # TIFF/ZARR
 
     # read image headers
     image_ = AICSImage(IMG_PATH, reconstruct_mosaic=False)
@@ -234,27 +382,25 @@ def main(args):
         'Residual': [0.123,0.480,-0.868]
     }
 
-    imDeconvolved = stain_vector_separation_large(image_np, stain_color_map, stains=stain_color_map.keys(), tile_size=4096,threads=multiprocessing.cpu_count(), batch_size=64)
+    imDeconvolved = stain_vector_separation_large(image_np[::5,::5,:], stain_color_map, stains=stain_color_map.keys(), tile_size=4096,threads=multiprocessing.cpu_count(), batch_size=64)
     
     # background removal
-    psr_image_filtered = background_removal(imDeconvolved)
+    psr_image_filtered = psr_background_removal(imDeconvolved,subscaling=20)
     
     # save color deconvolved image
     os.makedirs(OUTPUT_DIR,exist_ok=True)
 
-    pps = types.PhysicalPixelSizes(X=0.5, Y=0.5, Z=1.0)
     # TODO: auto channel colors from stain vectors
     channel_colors = ["FFFFFF","FFFFFF","FFFFFF"]
     channel_colors_int = [int(c, 16) for c in channel_colors]
 
     if OUT_TYPE == "TIFF":
-        writer = OmeTiffWriter()
+        image_path = os.path.join(OUTPUT_DIR,"color_decon.ome.tiff")
+        pyramidal_ome_tiff_write(imDeconvolved, image_path, resX=pps.X, resY=pps.Y,channel_colors=channel_colors_int)
 
-        #  save PSR channel
-        writer.save(psr_image_filtered.astype(np.uint8).T,os.path.join(OUTPUT_DIR,"PSR.ome.tiff"),
-                physical_pixel_sizes=pps,
-                dim_order="YX",
-        )
+        # output background removed psr channel only
+        image_path = os.path.join(OUTPUT_DIR,"PSR.ome.tiff")
+        pyramidal_ome_tiff_write(psr_image_filtered[:,:,np.newaxis], image_path, resX=pps.X, resY=pps.Y)
     elif OUT_TYPE == "ZARR":
         image_path = os.path.join(OUTPUT_DIR,"color_decon.zarr")
         if os.path.exists(image_path):
@@ -272,17 +418,6 @@ def main(args):
             scale_factor=2.0,
             dimension_order="CZYX"
             )
-
-    # collagen segmentation
-
-
-
-    # #  save mask
-    # collagen_ = collagen*255
-    # writer.save(collagen_.astype(np.uint8).T,os.path.join(OUTPUT_DIR,"collagen.ome.tiff"),
-    #         physical_pixel_sizes=pps,
-    #         dim_order="YX",
-    # )
 
 if __name__ == "__main__":
     args = get_args()
