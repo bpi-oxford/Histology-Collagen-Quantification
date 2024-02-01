@@ -44,7 +44,6 @@ def get_args():
         dest="output",
         help="Path to the output directory",
         metavar="DIR",
-        type=is_valid_file_or_directory,
         required=True
         )
 
@@ -364,7 +363,7 @@ def main(args):
     IMG_PATH = args.input
     OUTPUT_DIR = args.output
     OUT_TYPE = "TIFF" # TIFF/ZARR
-    SCALING = 1
+    SCALING = 2
 
     # read image headers
     image_ = AICSImage(IMG_PATH, reconstruct_mosaic=False)
