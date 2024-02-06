@@ -289,7 +289,7 @@ def psr_background_removal(imDeconvolved, subscaling=100):
     psr_image_filtered = np.copy(psr_image)
     psr_image_filtered[filled_tissue_mask==0] = 0
 
-    return psr_image_filtered
+    return psr_image_filtered, filled_tissue_mask.astype(np.uint8)
 
 def pyramidal_ome_tiff_write(image, path, resX=1.0, resY=1.0, units="µm", tile_size=2048, channel_colors=None):
     """
@@ -337,7 +337,6 @@ def pyramidal_ome_tiff_write(image, path, resX=1.0, resY=1.0, units="µm", tile_
 
     ome.images.append(img)
 
-
     def eval_cb(image, progress):
         pbar_filesave.update(progress.percent - pbar_filesave.n)
 
@@ -380,6 +379,12 @@ def main(args):
         'Residual': [0.123,0.480,-0.868]
     }
 
+    # stain_color_map = {
+    #     'PSR': [0.371,0.75,0.548],
+    #     'FG': [0.871,0.188,0.453],
+    #     'Residual': [0.123,0.480,-0.868]
+    # }
+
     # TODO: auto setting of the subscaling factor based on image size
     imDeconvolved = stain_vector_separation_large(image_np[::SCALING,::SCALING,:], stain_color_map, stains=stain_color_map.keys(), tile_size=4096,threads=multiprocessing.cpu_count(), batch_size=64)
     
@@ -387,7 +392,7 @@ def main(args):
     del image_np
 
     # background removal
-    psr_image_filtered = psr_background_removal(imDeconvolved,subscaling=int(100/SCALING))
+    psr_image_filtered, tissue_mask = psr_background_removal(imDeconvolved,subscaling=int(100/SCALING))
     
     # save color deconvolved image
     os.makedirs(OUTPUT_DIR,exist_ok=True)
@@ -397,12 +402,16 @@ def main(args):
     channel_colors_int = [int(c, 16) for c in channel_colors]
 
     if OUT_TYPE == "TIFF":
-        image_path = os.path.join(OUTPUT_DIR,"color_decon.ome.tiff")
-        pyramidal_ome_tiff_write(imDeconvolved, image_path, resX=pps.X*SCALING, resY=pps.Y*SCALING,channel_colors=channel_colors_int)
+        # image_path = os.path.join(OUTPUT_DIR,"color_decon.ome.tiff")
+        # pyramidal_ome_tiff_write(imDeconvolved, image_path, resX=pps.X*SCALING, resY=pps.Y*SCALING,channel_colors=channel_colors_int)
 
-        # output background removed psr channel only
-        image_path = os.path.join(OUTPUT_DIR,"PSR.ome.tiff")
-        pyramidal_ome_tiff_write(psr_image_filtered[:,:,np.newaxis], image_path, resX=pps.X, resY=pps.Y)
+        # output background removed psr channel
+        # image_path = os.path.join(OUTPUT_DIR,"PSR.ome.tiff")
+        # pyramidal_ome_tiff_write(psr_image_filtered[:,:,np.newaxis], image_path, resX=pps.X*SCALING, resY=pps.Y*SCALING)
+
+        # output tissue mask
+        image_path = os.path.join(OUTPUT_DIR,"mask.ome.tiff")
+        pyramidal_ome_tiff_write(tissue_mask[:,:,np.newaxis], image_path, resX=pps.X*SCALING, resY=pps.Y*SCALING)
     elif OUT_TYPE == "ZARR":
         image_path = os.path.join(OUTPUT_DIR,"color_decon.zarr")
         if os.path.exists(image_path):
