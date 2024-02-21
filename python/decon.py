@@ -18,6 +18,8 @@ import multiprocessing
 from multiprocessing import Pool
 from threading import Lock
 
+from pyHisto import io, utils
+
 import os
 import shutil
 import argparse
@@ -46,6 +48,20 @@ def get_args():
         metavar="DIR",
         required=True
         )
+    parser.add_argument(
+        "-s", "--scaling",
+        dest="scaling",
+        help="Scaling factor",
+        metavar="INT",
+        default=1
+    )
+    parser.add_argument(
+        "-bn", "--batch_num",
+        dest="batch_num",
+        help="Batch image count for color deconvolution",
+        metavar="INT",
+        default=16
+    )
 
     return parser.parse_args()
 
@@ -90,7 +106,8 @@ def image_read(path):
         data_to_process.append((path, m, {"x":bbox.x, "y":bbox.y, "w":bbox.w, "h":bbox.h}, np.min(x_), np.min(y_)))
 
     with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
-        results = list(tqdm(pool.imap(read_tile, data_to_process[:]), total=len(tle_bboxes), desc="Reading tiles"))
+        SKIP=1 # for debug only, otherwise set to 1
+        results = list(tqdm(pool.imap(read_tile, data_to_process[::SKIP]), total=len(tle_bboxes), desc="Reading tiles"))
 
     for res in tqdm(results,desc="Merging"):
         image_np[res["x_start"]:res["x_end"],res["y_start"]:res["y_end"],:] = res["image_tile"]
@@ -254,7 +271,15 @@ def tiled_resize(image, target_size=None, out_tile_size=2048,anti_aliasing=True,
 
     return new_image
 
-def psr_background_removal(imDeconvolved, subscaling=100):
+def create_circular_kernel(radius):
+    # Define the circular structuring element
+    structure = np.zeros((2 * radius + 1, 2 * radius + 1), dtype=bool)
+    y, x = np.ogrid[-radius:radius + 1, -radius:radius + 1]
+    mask = x**2 + y**2 <= radius**2
+    structure[mask] = 1
+    return structure
+
+def psr_background_removal(imDeconvolved, subscaling=100, closing=None, fill_holes=5 ,dilate=None, erode=None):
     print("Performing background removal on PSR channel...")
     # Tissue Mask
     psr_image = imDeconvolved[:,:,0]
@@ -276,8 +301,18 @@ def psr_background_removal(imDeconvolved, subscaling=100):
 
     print("Filling tissue mask...")
     filled_tissue_mask_subsampled = tissue_mask_subsampled
-    filled_tissue_mask_subsampled = ndimage.binary_closing(filled_tissue_mask_subsampled, structure=np.ones((25,25))).astype(int)
-    filled_tissue_mask_subsampled = ndimage.binary_fill_holes(filled_tissue_mask_subsampled, structure=np.ones((5,5))).astype(int)
+    if closing:
+        print("Closing tissue mask...")
+        filled_tissue_mask_subsampled = ndimage.binary_closing(filled_tissue_mask_subsampled, structure=create_circular_kernel(closing)).astype(int)
+    if fill_holes:
+        print("Filling holes...")
+        filled_tissue_mask_subsampled = ndimage.binary_fill_holes(filled_tissue_mask_subsampled, structure=create_circular_kernel(fill_holes)).astype(int)
+    if dilate:
+        print("Dilating tissue mask...")
+        filled_tissue_mask_subsampled = ndimage.binary_dilation(filled_tissue_mask_subsampled, structure=create_circular_kernel(dilate)).astype(int)
+    if erode:
+        print("Eroding tissue mask...")
+        filled_tissue_mask_subsampled = ndimage.binary_erosion(filled_tissue_mask_subsampled, structure=create_circular_kernel(erode)).astype(int)
 
     # rescale mask back to original dim
     # tissue_mask = resize(tissue_mask_subsampled.astype(bool), psr_image.shape,anti_aliasing=False)
@@ -362,22 +397,24 @@ def main(args):
     IMG_PATH = args.input
     OUTPUT_DIR = args.output
     OUT_TYPE = "TIFF" # TIFF/ZARR
-    SCALING = 2
+    SCALING = int(args.scaling)
 
     # read image headers
-    image_ = AICSImage(IMG_PATH, reconstruct_mosaic=False)
-    pps = types.PhysicalPixelSizes(X=image_.physical_pixel_sizes.X, Y=image_.physical_pixel_sizes.Y, Z=image_.physical_pixel_sizes.Z)
+    # image_ = AICSImage(IMG_PATH, reconstruct_mosaic=False)
+    # pps = types.PhysicalPixelSizes(X=image_.physical_pixel_sizes.X, Y=image_.physical_pixel_sizes.Y, Z=image_.physical_pixel_sizes.Z)
+    pps = io.get_czi_physical_pixel_size(IMG_PATH)
 
     # read large tiled image
-    image_np = image_read(IMG_PATH)
+    # image_np = image_read(IMG_PATH)
+    image_np = io.czi_read(IMG_PATH,skip=1)
 
     # color deconvolution
-    # human
-    stain_color_map = {
-        'PSR': [0.376,0.787,0.489],
-        'FG': [0.943,0.217,0.254],
-        'Residual': [0.123,0.480,-0.868]
-    }
+    # # nan's human lung
+    # stain_color_map = {
+    #     'PSR': [0.376,0.787,0.489],
+    #     'FG': [0.943,0.217,0.254],
+    #     'Residual': [0.123,0.480,-0.868]
+    # }
 
     # stain_color_map = {
     #     'PSR': [0.371,0.75,0.548],
@@ -385,15 +422,26 @@ def main(args):
     #     'Residual': [0.123,0.480,-0.868]
     # }
 
+    # klara's PSR data
+    stain_color_map = {
+        'PSR': [0.084,0.877,0.472],
+        'FG': [0.075,0.167,0.983],
+        'Residual': [0.996,-0.06,-0.066]
+    }
+
     # TODO: auto setting of the subscaling factor based on image size
-    imDeconvolved = stain_vector_separation_large(image_np[::SCALING,::SCALING,:], stain_color_map, stains=stain_color_map.keys(), tile_size=4096,threads=multiprocessing.cpu_count(), batch_size=64)
+    imDeconvolved = stain_vector_separation_large(image_np[::SCALING,::SCALING,:], stain_color_map, stains=stain_color_map.keys(), tile_size=4096,threads=multiprocessing.cpu_count(), batch_size=int(args.batch_num))
+    
+    # background removal
+    # AUTO_SCALING = int(min([imDeconvolved.shape[0]//2048,imDeconvolved.shape[1]//2048]))
+    # psr_image_filtered, tissue_mask = psr_background_removal(imDeconvolved,subscaling=AUTO_SCALING,closing=None,fill_holes=5,erode=1)
+    # tissue_mask = utils.get_tissue_mask_multiotsu(imDeconvolved[:,:,0],closing=None,fill_holes=5,erode=1)
+    tissue_mask = utils.get_tissue_mask(image_np[::SCALING,::SCALING,:],subsample=64,closing=10,fill_holes=25,background_offset=0.05)
     
     # remove redundant data to keep low memory
     del image_np
+    psr_image_filtered = imDeconvolved[:,:,0]*tissue_mask
 
-    # background removal
-    psr_image_filtered, tissue_mask = psr_background_removal(imDeconvolved,subscaling=int(100/SCALING))
-    
     # save color deconvolved image
     os.makedirs(OUTPUT_DIR,exist_ok=True)
 
@@ -402,15 +450,18 @@ def main(args):
     channel_colors_int = [int(c, 16) for c in channel_colors]
 
     if OUT_TYPE == "TIFF":
-        # image_path = os.path.join(OUTPUT_DIR,"color_decon.ome.tiff")
-        # pyramidal_ome_tiff_write(imDeconvolved, image_path, resX=pps.X*SCALING, resY=pps.Y*SCALING,channel_colors=channel_colors_int)
+        image_path = os.path.join(OUTPUT_DIR,"color_decon.ome.tiff")
+        print("Saving colour deconvoled image...")
+        pyramidal_ome_tiff_write(imDeconvolved, image_path, resX=pps.X*SCALING, resY=pps.Y*SCALING,channel_colors=channel_colors_int)
 
         # output background removed psr channel
-        # image_path = os.path.join(OUTPUT_DIR,"PSR.ome.tiff")
-        # pyramidal_ome_tiff_write(psr_image_filtered[:,:,np.newaxis], image_path, resX=pps.X*SCALING, resY=pps.Y*SCALING)
+        image_path = os.path.join(OUTPUT_DIR,"PSR.ome.tiff")
+        print("Saving PSR channel...")
+        pyramidal_ome_tiff_write(psr_image_filtered[:,:,np.newaxis], image_path, resX=pps.X*SCALING, resY=pps.Y*SCALING)
 
         # output tissue mask
         image_path = os.path.join(OUTPUT_DIR,"mask.ome.tiff")
+        print("Saving tissue mask...")
         pyramidal_ome_tiff_write(tissue_mask[:,:,np.newaxis], image_path, resX=pps.X*SCALING, resY=pps.Y*SCALING)
     elif OUT_TYPE == "ZARR":
         image_path = os.path.join(OUTPUT_DIR,"color_decon.zarr")
@@ -429,6 +480,7 @@ def main(args):
             scale_factor=2.0,
             dimension_order="CZYX"
             )
+    print("Process {} complete".format(args.input))
 
 if __name__ == "__main__":
     args = get_args()

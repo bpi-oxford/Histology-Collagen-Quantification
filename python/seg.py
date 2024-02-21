@@ -128,9 +128,11 @@ def get_args():
     return parser.parse_args()
 
 def main(args):
+    print("Reading image...")
     image = tifffile.imread(args.input)
     if args.mask:
-        mask = tifffile(args.mask)
+        print("Reading mask...")
+        mask = tifffile.imread(args.mask)
 
     # # Down sample for quick computation
     # if not isinstance(image,np.ndarray):
@@ -140,7 +142,7 @@ def main(args):
 
     print("Calculating multiple Otsu values...")
     thresholds = threshold_multiotsu(image[::1,::1],classes=4) # full size requires high memory usage, consistency not tested
-    threshold = thresholds[0]
+    threshold = thresholds[1]
     print("Otsu threshold value: ", threshold)
     
     # Segmentation
@@ -148,7 +150,7 @@ def main(args):
     collagen[(image>0) & (image<threshold)] = 1
 
     # output tissue mask
-    pyramidal_ome_tiff_write(collagen[:,:,np.newaxis], args.output, resX=1.0, resY=1.0)
+    pyramidal_ome_tiff_write(collagen.T[:,:,np.newaxis], args.output, resX=1.0, resY=1.0)
 
     # Area Quantification
     if args.stat:
@@ -156,7 +158,7 @@ def main(args):
         pixel_size = 1*1
 
         collagen_area = np.sum(collagen)*pixel_size
-        if mask:
+        if mask is not None:
             tissue_area = np.sum(mask)*pixel_size
         res = {
             "collagen (um^2)": collagen_area,
