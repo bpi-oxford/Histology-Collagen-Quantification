@@ -20,6 +20,26 @@ import multiprocessing
 from multiprocessing import Pool
 from threading import Lock
 
+def iterate_over_regions(image, mask, tile_size, overlap_size):
+    assert image.shape==mask.shape, "image and mask shape inconsistent"
+
+    image_height, image_width = image.shape[:2]
+    
+    # Iterate over rows
+    for y in range(0, image_height - tile_size + 1, tile_size - overlap_size):
+        # Iterate over columns
+        for x in range(0, image_width - tile_size + 1, tile_size - overlap_size):
+            # Extract tile
+            x_max = min(x+tile_size,image_width)
+            y_max = min(y+tile_size,image_height)
+
+            image_tile = image[y:y_max, x:x_max]
+            if mask is not None:
+                mask_tile = mask[y:y_max, x:x_max]
+                yield (x,y, x_max, y_max ,image_tile,mask_tile)
+            else:
+                yield (x,y, x_max, y_max ,image_tile)
+
 def pyramidal_ome_tiff_write(image, path, resX=1.0, resY=1.0, units="µm", tile_size=2048, channel_colors=None):
     """
     Pyramidal ome tiff write is only support in 2D + C data.
@@ -124,6 +144,19 @@ def get_args():
         help="Path to the statistics output file",
         metavar="PATH",
         )
+    parser.add_argument(
+        "-t", "--tile",
+        dest="tile",
+        help="Tile size for local measurements",
+        metavar="INT",
+        default=None
+    )
+    parser.add_argument(
+        "-p", "--padding",
+        help="Tile padding for local measurements",
+        metavar="INT",
+        default=0
+    )
 
     return parser.parse_args()
 
@@ -157,22 +190,53 @@ def main(args):
         # pixel_size = image.physical_pixel_sizes.X*image.physical_pixel_sizes.Y
         pixel_size = 1*1
 
-        collagen_area = np.sum(collagen)*pixel_size
-        if mask is not None:
-            tissue_area = np.sum(mask)*pixel_size
-        res = {
-            "collagen (um^2)": collagen_area,
-            "tissue (um^2)": tissue_area,
-            "collagen vs tissue (%)": collagen_area/tissue_area*100,
+        if args.tile:
+            tiled_res = {
+                "x0": [],
+                "y0": [],
+                "x1": [],
+                "y1": [],
+                "collagen (px^2)": [],
             }
+            if args.mask:
+                tiled_res["tissue (px^2)"] = []
+                tiled_res["collagen vs tissue (%)"] = []
+            for x, y, x_max, y_max, image_tile, mask_tile in tqdm(iterate_over_regions(collagen, mask,tile_size=int(args.tile),overlap_size=int(args.padding)),desc="Computing tiled collagen density"):
+                if np.sum(mask_tile) == 0:
+                    continue
 
-        res = pd.Series(res)
+                tiled_res["x0"].append(x)
+                tiled_res["y0"].append(y)
+                tiled_res["x1"].append(x_max)
+                tiled_res["y1"].append(y_max)
+                tiled_res["collagen (px^2)"].append(np.sum(image_tile)*pixel_size)
+                tiled_res
+                if args.mask:
+                    tiled_res["tissue (px^2)"].append(np.sum(mask_tile))
+                    tiled_res["collagen vs tissue (%)"].append(np.sum(image_tile)/np.sum(mask_tile))
 
-        print("Measurement result:")
-        print(res)
+            tiled_res = pd.DataFrame.from_dict(tiled_res)
 
-        print("Saving output...")
-        res.to_csv(args.stat)
+            print("Saving output...")
+            tiled_res.to_csv(args.stat)
+        else:
+            collagen_area = np.sum(collagen)*pixel_size
+            res = {
+                "collagen (px^2)": collagen_area,
+             }
+            if mask is not None:
+                tissue_area = np.sum(mask)*pixel_size
+                res["tissue (px^2)"] = tissue_area,
+                res["collagen vs tissue (%)"] = collagen_area/tissue_area*100,
+                tissue_area = np.sum(mask)*pixel_size
+
+            res = pd.Series(res)
+
+            print("Measurement result:")
+            print(res)
+
+            print("Saving output...")
+            res.to_csv(args.stat)
 
 if __name__ == "__main__":
     args = get_args()

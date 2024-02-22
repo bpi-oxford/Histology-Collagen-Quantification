@@ -380,7 +380,8 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample
 def main():
     # DATA_DIR = "/media/Data3/Jacky/Data/Dafni_lung_slide_scans/Mouse"
     # DATA_DIR = "/media/Data3/Jacky/Data/Dafni_lung_slide_scans/Human"
-    DATA_DIR = "/media/jackyko/FOR NAN/01_08_23 PSR and H&E/Human/PSR_cropped"
+    # DATA_DIR = "/media/jackyko/FOR NAN/01_08_23 PSR and H&E/Human/PSR_cropped"
+    DATA_DIR = "/media/Data3/Jacky/Data/Klara/PSR/SR 6 weeks HFD19-1/split_scene" 
 
     # mouse
     # stain_color_map = {
@@ -390,12 +391,20 @@ def main():
     # }
     # background = [207,209,206]
 
-    # human
+    # nan's human lung
+    # stain_color_map = {
+    #     'PSR': [0.376,0.787,0.489],
+    #     'FG': [0.943,0.217,0.254],
+    #     'Residual': [0.123,0.480,-0.868]
+    # }
+
+    # klara's PSR data
     stain_color_map = {
-        'PSR': [0.376,0.787,0.489],
-        'FG': [0.943,0.217,0.254],
-        'Residual': [0.123,0.480,-0.868]
+        'PSR': [0.084,0.877,0.472],
+        'FG': [0.075,0.167,0.983],
+        'Residual': [0.996,-0.06,-0.066]
     }
+
     background = [207,209,206]
 
     # suffices = [
@@ -419,12 +428,18 @@ def main():
         # ("test/21P00124-B8-002-M-adv-PSR-Create Image Subset-01-Create Image Subset-01.czi","test")
     ]
 
-    for case in os.listdir(DATA_DIR):
-        # if "less" not in case:
-        #     continue
-        for file in os.listdir(os.path.join(DATA_DIR,case)):
-            if file.split(".")[-1] == "czi":
-                suffices.append((os.path.join(case,file),os.path.join(case,file.split(".")[0])))
+    # for case in os.listdir(DATA_DIR):
+    #     # if "less" not in case:
+    #     #     continue
+    #     for file in os.listdir(os.path.join(DATA_DIR,case)):
+    #         if file.split(".")[-1] == "czi":
+    #             suffices.append((os.path.join(case,file),os.path.join(case,file.split(".")[0])))
+
+    for file in os.listdir(DATA_DIR):
+        if file.split(".")[-1] == "czi":
+            suffices.append((os.path.join(DATA_DIR,file),os.path.join(DATA_DIR,file.split(".")[0])))
+
+    # print(suffices)
 
     # can be safer to run in batches
     # BATCH = 1 
@@ -439,10 +454,10 @@ def main():
     # if end > len(suffices):
     #     end = len(suffices)
 
-    # start = 0
-    # end = -1
-    start = 60
+    start = 0
     end = -1
+    # start = 60
+    # end = -1
 
     for s in suffices[start:end]:
         IMAGE_PATH = os.path.join(DATA_DIR,s[0])
