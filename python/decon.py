@@ -422,12 +422,19 @@ def main(args):
     #     'Residual': [0.123,0.480,-0.868]
     # }
 
-    # klara's PSR data
+    # Blaise human lung
     stain_color_map = {
-        'PSR': [0.084,0.877,0.472],
-        'FG': [0.075,0.167,0.983],
-        'Residual': [0.996,-0.06,-0.066]
+        'PSR': [0.379,0.775,0.506],
+        'FG': [0.816,0.32,0.482],
+        'Residual': [0.353,0.385,-0.853]
     }
+
+    # # klara's PSR data
+    # stain_color_map = {
+    #     'PSR': [0.084,0.877,0.472],
+    #     'FG': [0.075,0.167,0.983],
+    #     'Residual': [0.996,-0.06,-0.066]
+    # }
 
     # TODO: auto setting of the subscaling factor based on image size
     imDeconvolved = stain_vector_separation_large(image_np[::SCALING,::SCALING,:], stain_color_map, stains=stain_color_map.keys(), tile_size=4096,threads=multiprocessing.cpu_count(), batch_size=int(args.batch_num))
