@@ -1,7 +1,8 @@
 #!/bin/bash
 
-DATA_DIR="/mnt/Data/Jacky/Nan/Blaise- Histology 16 wk Lung Scan 20-08-24/Slide Scanner/240819_Blaise_Nan"
-
+DATA_DIR="/mnt/Data/Jacky/Nan/nanozoomer"
+SCALING=2
+MANUAL_MASK="true"
 
 # Associative array for paired data
 declare -A paired_io
@@ -14,18 +15,22 @@ declare -A paired_io
 # paired_io["/media/Data3/Jacky/Data/Dafni_lung_slide_scans/Human/21P00655-A7-025-M-Adv-PSR.czi"]="/media/Data3/Jacky/Data/Dafni_lung_slide_scans/Human/21P00655-A7-025-M-Adv-PSR"
 
 # Loop through the directory and append each file to the array
+extensions=("ome.tif" "ome.tiff" "czi" "tif" "tiff")
+
+
 for file in "$DATA_DIR"/*; do
-    if [[ $file == *.czi ]]; then
-        # echo "$file"
-        # Get the filename without the suffix
-        filename=$(basename "$file")
-        filename_no_suffix="${filename%.*}"
-        paired_io["$file"]="$DATA_DIR"/$filename_no_suffix
-    fi
+    for ext in "${extensions[@]}"; do
+        if [[ "$file" == *.$ext ]]; then
+            filename=$(basename "$file")
+            filename_no_suffix="$(basename "$filename" .$ext)"
+            paired_io["$file"]="$DATA_DIR"/$filename_no_suffix
+            break
+        fi
+    done
 done
 
 echo "Performing batch colour deconvolution"
-SCALING=2
+
 
 # Loop through the paired data
 i=0
@@ -33,8 +38,14 @@ i=0
 length=${#paired_io[@]}
 
 for input in "${!paired_io[@]}"; do
-    ouptut=${paired_io[$input]}
+    output=${paired_io[$input]}
     echo  "Processing item $((i+1))/$length: Input File: $input, Output Dir: $ouptut"
-    python decon.py -i "$input" -o "$ouptut" -s $SCALING
+    if [ "$MANUAL_MASK" = "true" ]; then
+        mask=${paired_io[$input]}.geojson
+        python decon.py -i "$input" -o "$output" -s $SCALING -m "$mask"
+    else
+        python decon.py -i "$input" -o "$output" -s $SCALING
+    fi
     i=$((i+1))
+    # break
 done

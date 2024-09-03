@@ -1,0 +1,3 @@
+[submodule "dependency/ndPytools"]
+	path = dependency/ndPytools
+	url = git@github.com:fepegar/ndPytools.git

@@ -62,6 +62,13 @@ def get_args():
         metavar="INT",
         default=16
     )
+    parser.add_argument(
+        "-m", "--mask",
+        dest="mask",
+        help="Manual annotated mask file in geojson format",
+        metavar="PATH",
+        default=None
+    )
 
     return parser.parse_args()
 
@@ -93,7 +100,7 @@ def read_tile(args):
 def image_read(path):
     image = aicspylibczi.CziFile(pathlib.Path(path))
 
-    image_np = np.zeros((image.get_mosaic_bounding_box().w, image.get_mosaic_bounding_box().h,3), dtype=np.uint16)
+    image_np = np.zeros((image.get_mosaic_bounding_box().w,image.get_mosaic_bounding_box().h,3), dtype=np.uint16)
     print("image size (px):",image_np.shape)
     tle_bboxes = image.get_all_mosaic_tile_bounding_boxes()
 
@@ -405,8 +412,10 @@ def main(args):
     pps = io.get_czi_physical_pixel_size(IMG_PATH)
 
     # read large tiled image
-    # image_np = image_read(IMG_PATH)
-    image_np = io.czi_read(IMG_PATH,skip=1)
+    if os.path.splitext(args.input)[1].lower() == ".czi":
+        image_np = io.czi_read(IMG_PATH,skip=1)
+    elif os.path.splitext(args.input)[1].lower() in [".tif",".tiff"]:
+        image_np = io.tiff_read(IMG_PATH)
 
     # color deconvolution
     # # nan's human lung
@@ -422,11 +431,17 @@ def main(args):
     #     'Residual': [0.123,0.480,-0.868]
     # }
 
-    # Blaise human lung
+    # # Blaise human lung
+    # stain_color_map = {
+    #     'PSR': [0.379,0.775,0.506],
+    #     'FG': [0.816,0.32,0.482],
+    #     'Residual': [0.353,0.385,-0.853]
+    # }
+    # nanozoomer PSR
     stain_color_map = {
-        'PSR': [0.379,0.775,0.506],
-        'FG': [0.816,0.32,0.482],
-        'Residual': [0.353,0.385,-0.853]
+        'PSR': [-0.007,0.839,0.544],
+        'FG': [0.15,0.728,0.669],
+        'Residual': [0.725,0.379,-0.575]
     }
 
     # # klara's PSR data
@@ -443,8 +458,12 @@ def main(args):
     # AUTO_SCALING = int(min([imDeconvolved.shape[0]//2048,imDeconvolved.shape[1]//2048]))
     # psr_image_filtered, tissue_mask = psr_background_removal(imDeconvolved,subscaling=AUTO_SCALING,closing=None,fill_holes=5,erode=1)
     # tissue_mask = utils.get_tissue_mask_multiotsu(imDeconvolved[:,:,0],closing=None,fill_holes=5,erode=1)
-    tissue_mask = utils.get_tissue_mask(image_np[::SCALING,::SCALING,:],subsample=64,closing=10,fill_holes=25,background_offset=0.05)
-    
+    if args.mask is None:
+        tissue_mask = utils.get_tissue_mask(image_np[::SCALING,::SCALING,:],subsample=64,closing=10,fill_holes=25,background_offset=0.05)
+    else:
+        # read geojson to mask
+        tissue_mask = utils.get_tissue_mask_geojson_from_file(args.mask,image_np[::SCALING,::SCALING,:].shape[0:2],scaling_factor=1./SCALING)
+
     # remove redundant data to keep low memory
     del image_np
     psr_image_filtered = imDeconvolved[:,:,0]*tissue_mask
