@@ -5,10 +5,13 @@ BATCH_NUM=64
 
 weeks=(
     # "SR 6 weeks HFD19-1" 
-    "SR 9 weeks hfd18-1" 
-    "SR 16 weeks HFD10" 
-    "SR 24 weeks HFD15-1" 
-    "SR caloric restriction HFD24"
+    # "SR 9 weeks hfd18-1" 
+    # "SR 16 weeks HFD10" 
+    # "SR 24 weeks HFD15-1" 
+    # "SR caloric restriction HFD24"
+    # "subcutaneous"
+    "241109 Aflux young-mid-old PSR gWAT"
+    "241124 Aflux 6wks PSR gWAT"
     )
 
 # Loop through each string in the array
@@ -18,7 +21,9 @@ do
     declare -A paired_io
 
     # Add paired data to the array
-    DATA_DIR="/media/USB_disk/Klara/PSR/$week/split_scene"
+    DATA_DIR="/mnt/Ceph/jacky/Klara/PSR/$week/split_scene"
+    # DATA_DIR="/media/usb-drive/Klara/PSR/$week"
+    # DATA_DIR="/media/USB_disk/Klara/PSR/$week/split_scene"
 
     # Loop through the directory and append each file to the array
     for file in "$DATA_DIR"/*; do

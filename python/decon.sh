@@ -1,8 +1,9 @@
 #!/bin/bash
 
-DATA_DIR="/mnt/Data/Jacky/Nan/nanozoomer"
+# DATA_DIR="/mnt/Data/Jacky/Nan/Imaging_MollySK/split_scene"
+DATA_DIR="/mnt/Data/Jacky/Nan/250213_1st Bleo Expt/split_scene"
 SCALING=2
-MANUAL_MASK="true"
+MANUAL_MASK="false"
 
 # Associative array for paired data
 declare -A paired_io
@@ -39,7 +40,7 @@ length=${#paired_io[@]}
 
 for input in "${!paired_io[@]}"; do
     output=${paired_io[$input]}
-    echo  "Processing item $((i+1))/$length: Input File: $input, Output Dir: $ouptut"
+    echo  "Processing item $((i+1))/$length: Input File: $input, Output Dir: $output"
     if [ "$MANUAL_MASK" = "true" ]; then
         mask=${paired_io[$input]}.geojson
         python decon.py -i "$input" -o "$output" -s $SCALING -m "$mask"

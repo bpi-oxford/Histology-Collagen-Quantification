@@ -157,6 +157,14 @@ def get_args():
         metavar="INT",
         default=0
     )
+    parser.add_argument(
+        "-c", "--class",
+        dest="class_id",
+        help="Selected class ID",
+        metavar="INT",
+        default=0,
+        type=int
+    )
 
     return parser.parse_args()
 
@@ -174,8 +182,15 @@ def main(args):
     #     image_subsampled = image[::10,::10]
 
     print("Calculating multiple Otsu values...")
-    thresholds = threshold_multiotsu(image[::1,::1],classes=4) # full size requires high memory usage, consistency not tested
-    threshold = thresholds[1]
+    if args.mask:
+        # Extract the pixel values within the masked region
+        masked_pixels = image[mask > 0]
+    
+        # Compute the multi-level Otsu thresholds
+        thresholds = threshold_multiotsu(masked_pixels, classes=4)
+    else:
+        thresholds = threshold_multiotsu(image[::1,::1],classes=4) # full size requires high memory usage, consistency not tested
+    threshold = thresholds[args.class_id]
     print("Otsu threshold value: ", threshold)
     
     # Segmentation
@@ -213,12 +228,12 @@ def main(args):
                 tiled_res
                 if args.mask:
                     tiled_res["tissue (px^2)"].append(np.sum(mask_tile))
-                    tiled_res["collagen vs tissue (%)"].append(np.sum(image_tile)/np.sum(mask_tile))
+                    tiled_res["collagen vs tissue (%)"].append(np.sum(image_tile)/np.sum(mask_tile)*100)
 
             tiled_res = pd.DataFrame.from_dict(tiled_res)
 
             print("Saving output...")
-            tiled_res.to_csv(args.stat)
+            tiled_res.to_csv(args.stat,index=False)
         else:
             collagen_area = np.sum(collagen)*pixel_size
             res = {
@@ -236,7 +251,7 @@ def main(args):
             print(res)
 
             print("Saving output...")
-            res.to_csv(args.stat)
+            res.to_csv(args.stat,index=False)
 
 if __name__ == "__main__":
     args = get_args()

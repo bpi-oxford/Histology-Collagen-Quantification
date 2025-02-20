@@ -430,26 +430,36 @@ def main(args):
     #     'FG': [0.871,0.188,0.453],
     #     'Residual': [0.123,0.480,-0.868]
     # }
-
     # # Blaise human lung
     # stain_color_map = {
     #     'PSR': [0.379,0.775,0.506],
     #     'FG': [0.816,0.32,0.482],
     #     'Residual': [0.353,0.385,-0.853]
     # }
-    # nanozoomer PSR
-    stain_color_map = {
-        'PSR': [-0.007,0.839,0.544],
-        'FG': [0.15,0.728,0.669],
-        'Residual': [0.725,0.379,-0.575]
-    }
-
-    # # klara's PSR data
+    # # nanozoomer PSR
     # stain_color_map = {
-    #     'PSR': [0.084,0.877,0.472],
-    #     'FG': [0.075,0.167,0.983],
-    #     'Residual': [0.996,-0.06,-0.066]
+    #     'PSR': [-0.007,0.839,0.544],
+    #     'FG': [0.15,0.728,0.669],
+    #     'Residual': [0.725,0.379,-0.575]
     # }
+    # # MollySK
+    # stain_color_map = {
+    #     'PSR': [0.179,0.808,0.561],
+    #     'FG': [-0.014,0.299,0.954],
+    #     'Residual': [0.725,0.379,-0.575]
+    # }
+    # klara's PSR data
+    stain_color_map = {
+        'PSR': [0.084,0.877,0.472],
+        'FG': [0.075,0.167,0.983],
+        'Residual': [0.996,-0.06,-0.066]
+    }
+    #   250213_1st Bleo Expt
+    stain_color_map = {
+        'PSR': [0,0.727,0.686],
+        'FG': [0.101,0.551,0.829],
+        'Residual': [-0.912,-0.281,0.298],
+    }
 
     # TODO: auto setting of the subscaling factor based on image size
     imDeconvolved = stain_vector_separation_large(image_np[::SCALING,::SCALING,:], stain_color_map, stains=stain_color_map.keys(), tile_size=4096,threads=multiprocessing.cpu_count(), batch_size=int(args.batch_num))
