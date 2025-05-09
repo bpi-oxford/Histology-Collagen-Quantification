@@ -2,8 +2,10 @@
 
 # DATA_DIR="/mnt/Data/Jacky/Nan/Imaging_MollySK/split_scene"
 DATA_DIR="/mnt/Data/Jacky/Nan/250213_1st Bleo Expt/split_scene"
+DATA_DIR="/mnt/Data/Jacky/Nan/Nan Fast Green PSR Staining/split_scene"
 SCALING=2
 MANUAL_MASK="false"
+STAIN_COLOR_MAP="./stain_color_map/nan_fast_green_psr_staining.json"
 
 # Associative array for paired data
 declare -A paired_io
@@ -43,9 +45,9 @@ for input in "${!paired_io[@]}"; do
     echo  "Processing item $((i+1))/$length: Input File: $input, Output Dir: $output"
     if [ "$MANUAL_MASK" = "true" ]; then
         mask=${paired_io[$input]}.geojson
-        python decon.py -i "$input" -o "$output" -s $SCALING -m "$mask"
+        python decon.py -i "$input" -o "$output" -s $SCALING -m "$mask" --stain-color-map "$STAIN_COLOR_MAP"
     else
-        python decon.py -i "$input" -o "$output" -s $SCALING
+        python decon.py -i "$input" -o "$output" -s $SCALING --stain-color-map "$STAIN_COLOR_MAP"
     fi
     i=$((i+1))
     # break
