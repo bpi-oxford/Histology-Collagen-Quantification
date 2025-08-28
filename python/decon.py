@@ -409,6 +409,7 @@ def pyramidal_ome_tiff_write(image, path, resX=1.0, resY=1.0, units="µm", tile_
         )
 
 def main(args):
+    print("Starting WSI Color Deconvolution...")
     IMG_PATH = args.input
     OUTPUT_DIR = args.output
     STAIN_MAP_PATH = args.stain_map
@@ -418,9 +419,11 @@ def main(args):
     # read image headers
     # image_ = AICSImage(IMG_PATH, reconstruct_mosaic=False)
     # pps = types.PhysicalPixelSizes(X=image_.physical_pixel_sizes.X, Y=image_.physical_pixel_sizes.Y, Z=image_.physical_pixel_sizes.Z)
+    print("Loading physical pixel size...")
     pps = io.get_czi_physical_pixel_size(IMG_PATH)
 
     # read large tiled image
+    print("Reading large tiled image...")
     if os.path.splitext(args.input)[1].lower() == ".czi":
         image_np = io.czi_read(IMG_PATH,skip=1)
     elif os.path.splitext(args.input)[1].lower() in [".tif",".tiff"]:
@@ -428,6 +431,7 @@ def main(args):
 
     # color deconvolution
     # Load stain color map
+    print("Loading stain color map...")
     if not STAIN_MAP_PATH.endswith(".json"):
         STAIN_MAP_PATH += ".json"
 
