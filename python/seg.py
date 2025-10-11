@@ -165,6 +165,14 @@ def get_args():
         default=0,
         type=int
     )
+    parser.add_argument(
+        "--classes",
+        dest="classes",
+        help="Number of classes for multi-level Otsu thresholding",
+        metavar="INT",
+        default=4,
+        type=int
+    )
 
     return parser.parse_args()
 
@@ -187,9 +195,9 @@ def main(args):
         masked_pixels = image[mask > 0]
     
         # Compute the multi-level Otsu thresholds
-        thresholds = threshold_multiotsu(masked_pixels, classes=4)
+        thresholds = threshold_multiotsu(masked_pixels, classes=args.classes)
     else:
-        thresholds = threshold_multiotsu(image[::1,::1],classes=4) # full size requires high memory usage, consistency not tested
+        thresholds = threshold_multiotsu(image[::1,::1],classes=args.classes) # full size requires high memory usage, consistency not tested
     threshold = thresholds[args.class_id]
     print("Otsu threshold value: ", threshold)
     

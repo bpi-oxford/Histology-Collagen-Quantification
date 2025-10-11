@@ -53,9 +53,15 @@ tile_size = 2048
 # Recommended: 0 for speed, 512 for better edge handling
 padding = 0
 
+# Number of classes for multi-level Otsu thresholding
+# More classes = more threshold levels for segmentation
+# Recommended: 4 for most PSR images
+classes = 4
+
 # Otsu threshold class ID for collagen segmentation
-# 0 = Background (darkest), 1 = Collagen (typical), 2 = Dense collagen (brightest)
-# Recommended: 1 for most PSR images
+# Valid range: 0 to (classes-1)
+# 0 = Background (darkest), middle classes = Collagen gradients, highest = Dense collagen (brightest)
+# Recommended: 1 for most PSR images when classes=4
 class_id = 1
 
 [metadata]
@@ -80,11 +86,13 @@ parse_toml_config() {
     TILE=$(grep -E '^\s*tile_size\s*=' "$config_file" | cut -d'=' -f2 | sed 's/[ ]//g')
     PADDING=$(grep -E '^\s*padding\s*=' "$config_file" | cut -d'=' -f2 | sed 's/[ ]//g')
     CLASS=$(grep -E '^\s*class_id\s*=' "$config_file" | cut -d'=' -f2 | sed 's/[ ]//g')
+    CLASSES=$(grep -E '^\s*classes\s*=' "$config_file" | cut -d'=' -f2 | sed 's/[ ]//g')
 
     # Set defaults if parsing failed
     TILE=${TILE:-2048}
     PADDING=${PADDING:-0}
     CLASS=${CLASS:-1}
+    CLASSES=${CLASSES:-4}
     
     return 0
 }
@@ -272,6 +280,7 @@ data_dir = "$DATA_DIR"
 tile_size = $TILE
 padding = $PADDING
 class_id = $CLASS
+classes = $CLASSES
 
 [metadata]
 description = "Configuration saved from interactive session"
@@ -327,17 +336,37 @@ if [[ "$use_interactive" == true ]]; then
     read -r input_padding
     PADDING=${input_padding:-0}
 
+    # Prompt for number of classes
+    echo
+    echo "Enter number of classes for multi-level Otsu thresholding:"
+    echo "More classes = more threshold levels for segmentation"
+    echo "Recommended: 4 for most PSR images"
+    echo "Default: 4"
+    read -r input_classes
+    CLASSES=${input_classes:-4} 
+
     # Prompt for class selection
     echo
     echo "Enter Otsu threshold class ID for collagen segmentation:"
+    echo "Valid range: 0 to (classes-1)"
     echo "0 = Background class (darkest)"
     echo "1 = Collagen class (typical choice)"
-    echo "2 = Dense collagen class (brightest)"
-    echo "3 = Very dense collagen class"
+    echo "2+ = Dense collagen classes (brightest)"
     echo "Recommended: 1 for most PSR images"
     echo "Default: 1"
     read -r input_class
     CLASS=${input_class:-1}
+
+    # Validate class_id is within valid range and re-prompt if needed
+    max_class_id=$((CLASSES - 1))
+    while [[ $CLASS -lt 0 || $CLASS -gt $max_class_id ]]; do
+        echo
+        echo "Error: class_id ($CLASS) must be between 0 and $max_class_id (classes-1)"
+        echo "Current classes setting: $CLASSES"
+        echo "Please enter a valid class_id (0-$max_class_id):"
+        read -r input_class
+        CLASS=${input_class:-1}
+    done
 fi
 
 # Validate data directory (whether from config or interactive)
@@ -357,6 +386,7 @@ echo "Data directory: $DATA_DIR"
 echo "Tile size: $TILE pixels"
 echo "Padding: $PADDING pixels"
 echo "Class ID: $CLASS"
+echo "Classes: $CLASSES"
 echo "============================"
 echo
 
@@ -437,7 +467,7 @@ for directory in "${directories[@]}"; do
     echo "  → Statistics: res.csv"
     
     # Check for mask file
-    seg_args=(-i "$input" -o "$output" -s "$stat" -t "$TILE" -p "$PADDING" -c "$CLASS")
+    seg_args=(-i "$input" -o "$output" -s "$stat" -t "$TILE" -p "$PADDING" -c "$CLASS" --classes "$CLASSES")
     
     if [[ -f "$mask" ]]; then
         seg_args+=(-m "$mask")
