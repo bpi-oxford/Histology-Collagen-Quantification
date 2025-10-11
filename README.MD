@@ -33,19 +33,45 @@ flowchart TD
 
 ### 1. Environment Setup
 
+#### Quick Start (All Platforms)
+
 ```bash
 # Create environment from env.yaml
 mamba env create -f env.yaml
 
 # Activate environment
 mamba activate collagen_quant
+```
 
-# System dependencies
-# macOS
+#### Platform-Specific Dependencies
+
+##### macOS
+```bash
 brew install vips
+```
 
-# Ubuntu/Debian
+##### Ubuntu/Debian
+```bash
 sudo apt-get install libvips-dev
+```
+
+##### Windows
+
+```bash
+# Run in Git Bash - will prompt for installation directory
+bash setup_windows.sh
+```
+
+The script automatically:
+- Downloads and installs libvips 8.16.0
+- Saves installation path to `.vips_config.ini`
+- Configures Python scripts to use the correct path
+- Optionally creates conda environment
+
+**Manual Installation:** Download from [libvips.org/install.html](https://www.libvips.org/install.html), extract, and update `.vips_config.ini`:
+```ini
+[libvips]
+install_dir = C:\your\path\to\vips-dev-8.16.0
 ```
 
 ### 2. Stain Vector Measurement in QuPath

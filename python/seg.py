@@ -1,6 +1,57 @@
 import os
+import sys
 import shutil
 import argparse
+
+# Windows libvips PATH configuration
+# Must be imported before pyvips on Windows
+if sys.platform == 'win32':
+    try:
+        import vips_path_windows
+    except ImportError:
+        print("Warning: vips_path_windows.py not found. Attempting to configure libvips PATH manually...")
+
+        # Fallback: read from config file or use common paths
+        from pathlib import Path
+        import configparser
+
+        vips_dirs = []
+
+        # Try to read config file
+        config_file = Path(__file__).parent.parent / ".vips_config.ini"
+        if config_file.exists():
+            try:
+                config = configparser.ConfigParser()
+                config.read(config_file)
+                if 'libvips' in config:
+                    install_dir = config['libvips'].get('install_dir', '').strip()
+                    if install_dir:
+                        vips_dirs.append(install_dir)
+                    search_paths = config['libvips'].get('search_paths', '').strip()
+                    if search_paths:
+                        vips_dirs.extend([p.strip() for p in search_paths.split(',')])
+            except Exception as e:
+                print(f"Warning: Could not read config file: {e}")
+
+        # Add common fallback paths
+        vips_dirs.extend([
+            r'C:\vips-dev-8.16.0',
+            r'D:\vips\vips-dev-8.16.0',
+            r'D:\MSVC-build\vips\vips-dev-8.16.0',
+        ])
+
+        vips_found = False
+        for vips_dir in vips_dirs:
+            vips_bin = os.path.join(vips_dir, 'bin')
+            if os.path.exists(vips_bin):
+                os.environ['PATH'] = vips_bin + ';' + os.environ['PATH']
+                print(f"✓ Added libvips to PATH: {vips_bin}")
+                vips_found = True
+                break
+
+        if not vips_found:
+            print("ERROR: libvips not found! Please run: bash setup_windows.sh")
+            sys.exit(1)
 
 from aicsimageio.writers.ome_tiff_writer import OmeTiffWriter
 from aicsimageio.writers.ome_zarr_writer import OmeZarrWriter
