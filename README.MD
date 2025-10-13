@@ -52,7 +52,7 @@ brew install vips
 
 ##### Ubuntu/Debian
 ```bash
-sudo apt-get install libvips-dev
+sudo apt-get install libvips-dev libgdal-dev default-jre
 ```
 
 ##### Windows
