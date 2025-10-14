@@ -287,9 +287,9 @@ def setup_vips_path():
             # Add to PATH if not already there
             if vips_bin not in os.environ['PATH']:
                 os.environ['PATH'] = vips_bin + ';' + os.environ['PATH']
-                print(f"✓ Added libvips to PATH: {vips_bin}", file=sys.stderr)
+                print(f"[OK] Added libvips to PATH: {vips_bin}", file=sys.stderr)
             else:
-                print(f"✓ libvips already in PATH: {vips_bin}", file=sys.stderr)
+                print(f"[OK] libvips already in PATH: {vips_bin}", file=sys.stderr)
             return True
 
     # If we get here, libvips was not found
@@ -390,28 +390,40 @@ test_installation() {
 
     cat > "$test_script" << 'EOF'
 import sys
+import os
+
+# Force UTF-8 encoding for stdout/stderr on Windows
+if sys.platform == 'win32':
+    import io
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if isinstance(sys.stderr, io.TextIOWrapper):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 sys.path.insert(0, 'python')
 
 try:
     import vips_path_windows
     import pyvips
 
-    print(f"✓ pyvips version: {pyvips.version(0)}.{pyvips.version(1)}.{pyvips.version(2)}")
-    print("✓ libvips is working correctly!")
+    print(f"[OK] pyvips version: {pyvips.version(0)}.{pyvips.version(1)}.{pyvips.version(2)}")
+    print("[OK] libvips is working correctly!")
     sys.exit(0)
 except Exception as e:
-    print(f"✗ Error: {e}")
+    print(f"[ERROR] {e}")
+    import traceback
+    traceback.print_exc()
     sys.exit(1)
 EOF
 
     echo "Testing pyvips import..."
     if python "$test_script"; then
         echo
-        echo "✓ Installation test passed!"
+        echo "[OK] Installation test passed!"
         return 0
     else
         echo
-        echo "✗ Installation test failed"
+        echo "[ERROR] Installation test failed"
         echo "Please check the error messages above"
         return 1
     fi

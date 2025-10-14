@@ -67,9 +67,9 @@ def setup_vips_path():
             # Add to PATH if not already there
             if vips_bin not in os.environ['PATH']:
                 os.environ['PATH'] = vips_bin + ';' + os.environ['PATH']
-                print(f"✓ Added libvips to PATH: {vips_bin}", file=sys.stderr)
+                print(f"[OK] Added libvips to PATH: {vips_bin}", file=sys.stderr)
             else:
-                print(f"✓ libvips already in PATH: {vips_bin}", file=sys.stderr)
+                print(f"[OK] libvips already in PATH: {vips_bin}", file=sys.stderr)
             return True
 
     # If we get here, libvips was not found

@@ -56,6 +56,7 @@ if sys.platform == 'win32':
 from aicsimageio.writers.ome_tiff_writer import OmeTiffWriter
 from aicsimageio.writers.ome_zarr_writer import OmeZarrWriter
 from aicsimageio import AICSImage, types
+import vips_path_windows  # Must be imported before pyvips on Windows
 import pyvips
 import tifffile
 from ome_types.model import OME, Image, Pixels, Channel
