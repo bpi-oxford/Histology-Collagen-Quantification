@@ -33,36 +33,28 @@ flowchart TD
 
 ### 1. Environment Setup
 
-#### Quick Start (All Platforms)
-
 ```bash
 # Create environment from env.yaml
 mamba env create -f env.yaml
 
 # Activate environment
 mamba activate collagen_quant
-```
 
-#### Platform-Specific Dependencies
+# Platform-Specific Dependencies
 
-##### macOS
-```bash
+## macOS
 brew install vips
-```
 
-##### Ubuntu/Debian
-```bash
+## Ubuntu/Debian
 sudo apt-get install libvips-dev libgdal-dev default-jre
-```
 
-##### Windows
-
-```bash
+## Windows
 # Run in Git Bash - will prompt for installation directory
 bash setup_windows.sh
 ```
 
-The script automatically:
+#### Notes for Windows Installation
+The `setup_windows.sh` script automatically:
 - Downloads and installs libvips 8.16.0
 - Saves installation path to `.vips_config.ini`
 - Configures Python scripts to use the correct path
@@ -73,6 +65,37 @@ The script automatically:
 [libvips]
 install_dir = C:\your\path\to\vips-dev-8.16.0
 ```
+
+#### Notes for Cluster Installation
+On some clusters the histomicstk wheels (and their GDAL dependency) are not available via pip by default. Two safe approaches:
+
+Option A — recommended (install system/conda GDAL first)
+```bash
+# create / activate environment
+mamba create -n collagen_quant python=3.10 -y
+mamba activate collagen_quant
+
+# install GDAL and system libs from conda-forge
+mamba install -c conda-forge gdal libgdal -y
+
+# install Python requirements without modifying the repo file, then install histomicstk from the wheel index
+# (either edit requirements.txt to remove histomicstk or install requirements excluding it)
+pip install -r requirements.txt
+pip install "histomicstk>=1.2.0" --find-links https://girder.github.io/large_image_wheels
+```
+
+Option B — if you prefer not to edit files (safe temporary workaround)
+```bash
+# create a temporary requirements file that excludes histomicstk
+grep -v -E '^histomicstk' requirements.txt > /tmp/req_no_hist.txt
+
+# install everything else, then install histomicstk from the wheel index
+pip install -r /tmp/req_no_hist.txt
+pip install "histomicstk>=1.2.0" --find-links https://girder.github.io/large_image_wheels
+```
+
+# Run in Git Bash - will prompt for installation directory
+bash setup_windows.sh
 
 ### 2. Stain Vector Measurement in QuPath
 
