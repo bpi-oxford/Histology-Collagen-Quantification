@@ -82,7 +82,7 @@ parse_toml_config() {
     fi
     
     # Parse TOML file using basic regex patterns
-    DATA_DIR=$(grep -E '^\s*data_dir\s*=' "$config_file" | cut -d'=' -f2 | sed 's/[" ]//g' | xargs)
+    DATA_DIR=$(grep -E '^\s*data_dir\s*=' "$config_file" | cut -d'=' -f2 | sed 's/^[ \t]*"//;s/"[ \t]*$//' | xargs echo -n)
     TILE=$(grep -E '^\s*tile_size\s*=' "$config_file" | cut -d'=' -f2 | sed 's/[ ]//g')
     PADDING=$(grep -E '^\s*padding\s*=' "$config_file" | cut -d'=' -f2 | sed 's/[ ]//g')
     CLASS=$(grep -E '^\s*class_id\s*=' "$config_file" | cut -d'=' -f2 | sed 's/[ ]//g')

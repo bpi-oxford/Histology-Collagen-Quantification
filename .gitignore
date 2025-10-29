@@ -5,3 +5,6 @@ data
 
 .DS_Store
 __pycache__/
+
+# User-specific libvips configuration
+.vips_config.ini

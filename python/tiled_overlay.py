@@ -1,4 +1,5 @@
 import tifffile
+import vips_path_windows  # Must be imported before pyvips on Windows
 import pyvips
 from ome_types.model import OME, Image, Pixels, Channel
 import pandas as pd
