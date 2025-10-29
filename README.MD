@@ -33,6 +33,62 @@ flowchart TD
 
 ### 1. Environment Setup
 
+Three methods are available for setting up the environment, listed in order of recommendation:
+
+#### Option 1: Docker (Recommended)
+
+Docker provides the most reproducible and isolated environment with all dependencies pre-installed.
+
+```bash
+# Build the Docker image
+docker build -t collagen-quant .
+
+# Run interactive shell
+docker run -it --rm \
+  -v /path/to/your/data:/data \
+  collagen-quant
+
+# Inside the container, activate pixi environment
+pixi shell
+```
+
+See the [Docker Usage](#docker-usage) section below for detailed instructions including Jupyter notebook integration, Apptainer/Singularity conversion, and more.
+
+#### Option 2: Pixi (Modern, Fast, Cross-platform)
+
+[Pixi](https://pixi.sh) is a fast, modern package manager that provides reproducible environments across platforms.
+
+```bash
+# Install pixi (if not already installed)
+# macOS/Linux
+curl -fsSL https://pixi.sh/install.sh | bash
+
+# Windows
+iwr -useb https://pixi.sh/install.ps1 | iex
+
+# Install all dependencies (creates .pixi environment)
+pixi install
+
+# Activate the environment
+pixi shell
+
+# Or run tasks directly without activating
+pixi run decon    # Color deconvolution
+pixi run seg      # Segmentation
+pixi run notebook # Jupyter Lab
+```
+
+**Advantages:**
+- Fast dependency resolution and installation
+- Lock file for reproducibility (`pixi.lock`)
+- Cross-platform support (Linux, macOS, Windows)
+- Integrated with pyproject.toml
+- No need to manually install system dependencies like libvips
+
+#### Option 3: Mamba/Conda (Traditional)
+
+Traditional conda/mamba environment for users familiar with conda workflows.
+
 ```bash
 # Create environment from env.yaml
 mamba env create -f env.yaml
@@ -40,13 +96,18 @@ mamba env create -f env.yaml
 # Activate environment
 mamba activate collagen_quant
 
-# System dependencies
+# Install the package
+pip install -e .
+
+# System dependencies (required for pyvips)
 # macOS
 brew install vips
 
 # Ubuntu/Debian
 sudo apt-get install libvips-dev
 ```
+
+**Note:** When using mamba/conda, you need to manually install system dependencies (libvips). Pixi and Docker handle this automatically.
 
 ### 2. Stain Vector Measurement in QuPath
 
@@ -210,6 +271,221 @@ Both interactive scripts automatically handle batch processing:
 - Provides quick statistics summary for each processed sample
 
 For fully automated processing without prompts, you can modify the scripts or call the underlying Python modules directly with command-line arguments.
+
+## Docker Usage
+
+Docker provides a fully isolated, reproducible environment with all dependencies pre-configured. This is the recommended method for production use and reproducibility.
+
+### Building the Docker Image
+
+```bash
+# Build from the repository directory
+docker build -t collagen-quant .
+
+# Build with a specific tag
+docker build -t collagen-quant:v0.1.0 .
+```
+
+### Running Interactive CLI
+
+Run the container with an interactive shell to execute processing scripts:
+
+```bash
+# Basic interactive session
+docker run -it --rm \
+  -v /path/to/your/raw_images:/data/input \
+  -v /path/to/your/output:/data/output \
+  collagen-quant
+
+# Inside the container, activate pixi and run workflows
+pixi shell
+pixi run decon
+pixi run seg
+```
+
+**Volume mounting explained:**
+- `-v /path/to/your/raw_images:/data/input` - Mount your input images
+- `-v /path/to/your/output:/data/output` - Mount output directory
+- `--rm` - Automatically remove container when it exits
+- `-it` - Interactive terminal
+
+### Jupyter Notebook Integration with VS Code
+
+Run Jupyter Lab inside the container and connect from VS Code on your host machine:
+
+```bash
+# Start container with Jupyter Lab
+docker run -it --rm \
+  -p 8888:8888 \
+  -v /path/to/your/data:/data \
+  -v $(pwd)/notebook:/app/notebook \
+  collagen-quant \
+  pixi run notebook
+```
+
+**Connecting from VS Code:**
+
+1. The terminal will display a URL like: `http://127.0.0.1:8888/lab?token=abc123...`
+2. In VS Code:
+   - Install the "Jupyter" extension if not already installed
+   - Press `Cmd/Ctrl + Shift + P` → "Jupyter: Specify Jupyter Server for Connections"
+   - Select "Existing" → Paste the URL with token
+   - Open any `.ipynb` file and select the kernel from the remote server
+
+**Alternative: Direct notebook execution**
+
+```bash
+# Copy token from the Jupyter output, then:
+# Open browser to http://localhost:8888 and paste the token
+```
+
+### Running Workflows Directly
+
+Execute specific workflows without entering the container shell:
+
+```bash
+# Color deconvolution
+docker run -it --rm \
+  -v /path/to/raw_images:/data/input \
+  -v /path/to/output:/data/output \
+  collagen-quant \
+  pixi run decon
+
+# Segmentation
+docker run -it --rm \
+  -v /path/to/processed_data:/data/input \
+  -v /path/to/output:/data/output \
+  collagen-quant \
+  pixi run seg
+```
+
+### Apptainer/Singularity Conversion and Usage
+
+For HPC environments that use Apptainer (formerly Singularity), you can convert the Docker image:
+
+#### Converting Docker Image to Apptainer/Singularity
+
+```bash
+# Method 1: Build directly from Dockerfile
+apptainer build collagen-quant.sif docker-daemon://collagen-quant:latest
+
+# Method 2: Build from Docker Hub (if you pushed the image)
+apptainer build collagen-quant.sif docker://username/collagen-quant:latest
+
+# Method 3: Using Singularity (older systems)
+singularity build collagen-quant.sif docker-daemon://collagen-quant:latest
+```
+
+#### Running with Apptainer/Singularity
+
+```bash
+# Interactive shell
+apptainer shell \
+  --bind /path/to/data:/data \
+  collagen-quant.sif
+
+# Inside the container
+pixi shell
+pixi run decon
+
+# Execute command directly
+apptainer exec \
+  --bind /path/to/raw_images:/data/input \
+  --bind /path/to/output:/data/output \
+  collagen-quant.sif \
+  pixi run decon
+
+# Run with GPU support (if needed in future)
+apptainer exec --nv \
+  --bind /path/to/data:/data \
+  collagen-quant.sif \
+  pixi run seg
+```
+
+#### Interactive Session with Apptainer
+
+For HPC job schedulers (SLURM example):
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=collagen-quant
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
+#SBATCH --time=24:00:00
+
+# Load Apptainer module (if required by your HPC)
+module load apptainer
+
+# Run processing workflow
+apptainer exec \
+  --bind /scratch/$USER/histology_data:/data \
+  /path/to/collagen-quant.sif \
+  bash -c "pixi shell && pixi run decon && pixi run seg"
+```
+
+### Docker Compose (Advanced)
+
+For more complex setups with multiple services:
+
+Create `docker-compose.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  collagen-quant:
+    build: .
+    image: collagen-quant:latest
+    volumes:
+      - ./raw_images:/data/input
+      - ./processed_data:/data/output
+      - ./notebook:/app/notebook
+    ports:
+      - "8888:8888"
+    command: pixi run notebook
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+    stdin_open: true
+    tty: true
+```
+
+Run with:
+```bash
+docker-compose up
+```
+
+### Best Practices for Docker Usage
+
+1. **Data Management:**
+   - Always use volume mounts (`-v`) for data directories
+   - Never store important data inside containers
+   - Use consistent mount points like `/data/input` and `/data/output`
+
+2. **Resource Limits:**
+   ```bash
+   docker run -it --rm \
+     --cpus="8" \
+     --memory="32g" \
+     -v /path/to/data:/data \
+     collagen-quant
+   ```
+
+3. **Persistence:**
+   - Results are saved to mounted volumes and persist after container exits
+   - The `.pixi` environment is built into the image for faster startup
+
+4. **Security:**
+   - Run containers with `--read-only` flag when possible
+   - Use `--user $(id -u):$(id -g)` to match host user permissions
+   - Example:
+   ```bash
+   docker run -it --rm \
+     --user $(id -u):$(id -g) \
+     -v /path/to/data:/data \
+     collagen-quant
+   ```
 
 <!-- ## Citation
 
