@@ -30,7 +30,8 @@ scp collagen-quant.tar.gz user@cluster:/scratch/$USER/
 
 # On HPC cluster
 cd /scratch/$USER/
-apptainer build collagen-quant.sif docker-archive://collagen-quant.tar.gz
+gunzip collagen-quant.tar.gz  # Extract tar from tar.gz
+apptainer build collagen-quant.sif docker-archive://collagen-quant.tar
 
 # Run on HPC
 apptainer exec collagen-quant.sif bash python/decon.sh
@@ -95,6 +96,11 @@ docker build --no-cache --build-arg GITHUB_TOKEN -t collagen-quant .
 **Out of memory during build:**
 - Increase Docker memory limit (Docker Desktop → Settings → Resources)
 - Use smaller batch sizes in processing
+
+**Apptainer build fails with tar header error:**
+- Apptainer's `docker-archive://` requires an uncompressed tar file
+- Extract first: `gunzip collagen-quant.tar.gz`
+- Then build: `apptainer build collagen-quant.sif docker-archive://collagen-quant.tar`
 
 ## Verify Installation
 

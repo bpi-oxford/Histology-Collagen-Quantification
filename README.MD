@@ -57,7 +57,6 @@ bash python/seg.sh       # or: pixi run seg
 | [File Formats](doc/file-formats.md) | Input/output specifications |
 | [Docker Guide](doc/docker.md) | Container usage and HPC |
 
-<<<<<<< HEAD
 #### Run in Git Bash - will prompt for installation directory
 ```bash
 bash setup_windows.sh
@@ -240,15 +239,3 @@ If you use this pipeline in your research, please cite:
 ## Technical Details
 
 For detailed technical implementation and validation, see the Jupyter [notebook](./notebook/collagen_quantification_mouse.ipynb).
-=======
-## Output Files
-
-- `color_decon.ome.tiff` - Deconvolved channels
-- `PSR.ome.tiff` - PSR channel only
-- `collagen.ome.tiff` - Binary segmentation mask
-- `res.csv` - Quantification statistics (x0, y0, x1, y1, collagen_px, tissue_px, collagen_%)
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details
->>>>>>> 221bd451e5071cb8e41711ccc4d95a25a73c82de
