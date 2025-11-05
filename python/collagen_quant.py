@@ -1,7 +1,5 @@
-from aicsimageio import AICSImage
-from aicsimageio.writers import OmeTiffWriter
-
-import aicspylibczi
+from bioio import BioImage
+from bioio_ome_tiff import OmeTiffWriter
 import pathlib
 
 import czifile
@@ -134,8 +132,8 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample
     stains = stain_color_map.keys()
     
     if reader == "aicsimageio":
-        print("Loading AICSImage header...")
-        image = AICSImage(IMAGE_PATH, reconstruct_mosaic=reconstruct_mosaic)
+        print("Loading BioImage header...")
+        image = BioImage(IMAGE_PATH, reconstruct_mosaic=reconstruct_mosaic)
 
         if reconstruct_mosaic == False:
             print(image.dims)
@@ -162,9 +160,16 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample
             imDeconvolved = stain_vector_separation_large(image_dask, stain_color_map, stains, tile_size=4096,threads=threads, batch_size=64)
     elif reader == "aicspylibczi":
         print("Loading image...")
+        # Note: This path uses low-level aicspylibczi for specialized mosaic tile reading
+        # For basic CZI reading, consider using reader="aicsimageio" with BioImage instead
+        try:
+            import aicspylibczi
+        except ImportError:
+            raise ImportError("aicspylibczi is required for this reader. Install with: pip install aicspylibczi")
+
         mosaic_file = pathlib.Path(IMAGE_PATH)
         image_ = aicspylibczi.CziFile(mosaic_file)
-        image = AICSImage(IMAGE_PATH, reconstruct_mosaic=reconstruct_mosaic) # temp workaround for pixel size thing
+        image = BioImage(IMAGE_PATH) # temp workaround for pixel size
         # print(image.get_mosaic_scene_bounding_box().x, image.get_mosaic_scene_bounding_box().y, image.get_mosaic_scene_bounding_box().w, image.get_mosaic_scene_bounding_box().h)
         
         if reconstruct_mosaic:
@@ -253,9 +258,8 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample
     print("Saving color deconvolved PSR channel")
 
     outpath = os.path.join(OUTPUT_DIR,"{}_color_deconv.tif".format(image_basename))
-    writer = OmeTiffWriter()
     # only save PSR channel
-    writer.save(imDeconvolved.T[0,:,:],outpath,
+    OmeTiffWriter.save(imDeconvolved.T[0,:,:],outpath,
                     physical_pixel_sizes=image.physical_pixel_sizes,
                     dim_order="YX",
                     )
@@ -341,10 +345,9 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample
 
     print("Saving collagen region...")
     outpath = os.path.join(OUTPUT_DIR,"{}_label_collagen.tif".format(image_basename))
-    writer = OmeTiffWriter()
     # only save PSR channel
     collagen_ = collagen*255
-    writer.save(collagen_.astype(np.uint8).T,outpath,
+    OmeTiffWriter.save(collagen_.astype(np.uint8).T,outpath,
                 physical_pixel_sizes=image.physical_pixel_sizes,
                 dim_order="YX",
                 )
@@ -353,10 +356,9 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample
 
     print("Saving tissue region...")
     outpath = os.path.join(OUTPUT_DIR,"{}_label_tissue.tif".format(image_basename))
-    writer = OmeTiffWriter()
     # only save PSR channel
     tissue_mask_ = tissue_mask*255
-    writer.save(tissue_mask_.astype(np.uint8).T,outpath,
+    OmeTiffWriter.save(tissue_mask_.astype(np.uint8).T,outpath,
                 physical_pixel_sizes=image.physical_pixel_sizes,
                 dim_order="YX",
     )
@@ -365,10 +367,9 @@ def collagen_quant(IMAGE_PATH, OUTPUT_DIR, stain_color_map, threads=1, subsample
 
     print("Saving filled tissue region...")
     outpath = os.path.join(OUTPUT_DIR,"{}_label_filled_tissue.tif".format(image_basename))
-    writer = OmeTiffWriter()
     # only save PSR channel
     filled_tissue_mask_ = filled_tissue_mask*255
-    writer.save(filled_tissue_mask_.astype(np.uint8).T,outpath,
+    OmeTiffWriter.save(filled_tissue_mask_.astype(np.uint8).T,outpath,
                 physical_pixel_sizes=image.physical_pixel_sizes,
                 dim_order="YX",
     )

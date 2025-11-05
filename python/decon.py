@@ -1,7 +1,6 @@
-from aicsimageio.writers.ome_tiff_writer import OmeTiffWriter
-from aicsimageio.writers.ome_zarr_writer import OmeZarrWriter
-from aicsimageio import AICSImage, types
-import aicspylibczi
+from bioio import BioImage
+from bioio_ome_zarr.writers import OMEZarrWriter
+from bioio.writers import OmeTiffWriter
 import vips_path_windows  # Must be imported before pyvips on Windows
 import pyvips
 import pathlib
@@ -488,7 +487,7 @@ def main(args):
         if os.path.exists(image_path):
             shutil.rmtree(image_path)
 
-        writer = OmeZarrWriter(image_path)
+        writer = OMEZarrWriter(image_path)
 
         writer.write_image(
             imDeconvolved, 

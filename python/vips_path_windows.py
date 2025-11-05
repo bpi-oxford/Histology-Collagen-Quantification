@@ -85,5 +85,6 @@ def setup_vips_path():
     print("=" * 60, file=sys.stderr)
     sys.exit(1)
 
-# Auto-configure when imported
-setup_vips_path()
+# Auto-configure when imported (only on Windows)
+if sys.platform == 'win32':
+    setup_vips_path()

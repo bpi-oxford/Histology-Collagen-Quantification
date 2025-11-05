@@ -26,15 +26,24 @@ python -c "import pyvips, geopandas, bioio, histomicstk"
 # On local machine
 docker save collagen-quant:latest -o collagen-quant.tar
 gzip collagen-quant.tar
-scp collagen-quant.tar.gz user@cluster:/scratch/$USER/
+scp collagen-quant.tar.gz user@cluster:~/images
 
 # On HPC cluster
-cd /scratch/$USER/
+cd ~/images
 gunzip collagen-quant.tar.gz  # Extract tar from tar.gz
 apptainer build collagen-quant.sif docker-archive://collagen-quant.tar
 
-# Run on HPC
+# Request SLURM interactive session (adjust resources as needed)
+srun -p short --mem=32G --cpus-per-task=8 --time=1-06:00:00 --pty bash
+
+# Run on HPC - Execute specific command
 apptainer exec collagen-quant.sif bash python/decon.sh
+
+# Interactive mode with bind mounts (access data and config directories)
+apptainer shell --bind /path/to/data:/data,/path/to/configs:/app/configs --pwd /app collagen-quant.sif
+
+# example
+apptainer shell --bind /well/kir-fritzsche/projects/archive/Nan/Nan_Fast_Green_PSR_Staining/split_scene/:/data,/users/kir-fritzsche/oyk357/projects/Histology-Collagen-Quantification/configs/:/app/configs --pwd /app ~/images/collagen-quant.sif
 ```
 
 ## Method 2: Pixi (Fastest for Local Development)
@@ -101,6 +110,22 @@ docker build --no-cache --build-arg GITHUB_TOKEN -t collagen-quant .
 - Apptainer's `docker-archive://` requires an uncompressed tar file
 - Extract first: `gunzip collagen-quant.tar.gz`
 - Then build: `apptainer build collagen-quant.sif docker-archive://collagen-quant.tar`
+
+**Cluster home directory quota exceeded:**
+- Apptainer cache (`~/.apptainer`) and SIF files can fill home directory quota
+- **Solution**: Build SIF files directly in scratch, symlink cache only
+  ```bash
+  # Symlink Apptainer cache to scratch
+  mkdir -p /scratch/$USER/apptainer_cache
+  rm -rf ~/.apptainer  # Remove if exists
+  ln -s /scratch/$USER/apptainer_cache ~/.apptainer
+
+  # Build SIF directly in scratch (not home directory)
+  cd /scratch/$USER/
+  apptainer build /scratch/$USER/collagen-quant.sif docker-archive://collagen-quant.tar
+  ```
+- Verify cache symlink: `ls -la ~ | grep apptainer` should show symlink
+- Store all SIF files in `/scratch/$USER/` to avoid quota issues
 
 ## Verify Installation
 
