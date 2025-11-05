@@ -66,36 +66,14 @@ The `setup_windows.sh` script automatically:
 install_dir = C:\your\path\to\vips-dev-8.16.0
 ```
 
-#### Notes for Cluster Installation
-On some clusters the histomicstk wheels (and their GDAL dependency) are not available via pip by default. Two safe approaches:
-
-Option A — recommended (install system/conda GDAL first)
+#### Run in Git Bash - will prompt for installation directory
 ```bash
-# create / activate environment
-mamba create -n collagen_quant python=3.10 -y
-mamba activate collagen_quant
-
-# install GDAL and system libs from conda-forge
-mamba install -c conda-forge gdal libgdal -y
-
-# install Python requirements without modifying the repo file, then install histomicstk from the wheel index
-# (either edit requirements.txt to remove histomicstk or install requirements excluding it)
-pip install -r requirements.txt
-pip install "histomicstk>=1.2.0" --find-links https://girder.github.io/large_image_wheels
-```
-
-Option B — if you prefer not to edit files (safe temporary workaround)
-```bash
-# create a temporary requirements file that excludes histomicstk
-grep -v -E '^histomicstk' requirements.txt > /tmp/req_no_hist.txt
-
-# install everything else, then install histomicstk from the wheel index
-pip install -r /tmp/req_no_hist.txt
-pip install "histomicstk>=1.2.0" --find-links https://girder.github.io/large_image_wheels
-```
-
-# Run in Git Bash - will prompt for installation directory
 bash setup_windows.sh
+```
+
+#### Cluster Install
+On cluster environment often some dependency packages are not able to install via `sudo`, in particular `histomicstk`. It is recommneded to do manual `pyHisto` install and histomicstk installation 
+<!-- TODO: make code to automatically pull pyhisto, comment out the histomicstk and pyHisto in both repo, and do the dep install -->
 
 ### 2. Stain Vector Measurement in QuPath
 
