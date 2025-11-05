@@ -1,71 +1,63 @@
 # Histology Collagen Quantification
 
-High resolution histology slice scanning quantification with PSR (Picrosirius Red) + FG (Fast Green) staining for automated collagen detection and quantification.
+Automated collagen quantification pipeline for PSR (Picrosirius Red) + FG (Fast Green) stained whole slide images.
 
-## Overview
+## Features
 
-This pipeline provides automated analysis of histological images stained with PSR+FG to quantify collagen content in tissue samples. The workflow combines color deconvolution techniques with advanced segmentation algorithms to provide accurate, reproducible measurements suitable for research applications.
-
-## Pipeline Features
-
-1. **Multi-format image support**: CZI, TIFF, OME-TIFF file formats
-2. **Color deconvolution**: User-defined stain vectors compatible with QuPath measurements
-3. **Automated tissue detection**: Multi-level Otsu thresholding with morphological operations
-4. **Scalable processing**: Tiled processing for large whole slide images
-5. **Quantitative analysis**: Regional and global collagen density measurements
-6. **Output formats**: Pyramidal OME-TIFF for visualization and CSV for statistical analysis
-
-## Workflow Overview
-
-```mermaid
-flowchart TD
-    A[Raw WSI Images<br/>CZI/TIFF] --> B[QuPath Stain Vector<br/>Measurement]
-    B --> C[Color Deconvolution<br/>python/decon.sh]
-    C --> D[PSR Channel<br/>Extraction]
-    C --> E[Tissue Mask<br/>Generation]
-    D --> F[Collagen Segmentation<br/>python/seg.sh]
-    E --> F
-    F --> G[Quantitative Results<br/>CSV Statistics]
-    F --> H[Segmentation Masks<br/>OME-TIFF]
-```
+- Multi-format support: CZI, TIFF, OME-TIFF
+- QuPath-compatible color deconvolution
+- Multi-level Otsu thresholding
+- Tiled processing for large WSI
+- Docker & Apptainer/Singularity support
 
 ## Quick Start
 
-### 1. Environment Setup
+### Installation
+
+**Docker (Production/HPC):**
+```bash
+export GITHUB_TOKEN=ghp_your_token_here
+docker build --build-arg GITHUB_TOKEN -t collagen-quant .
+docker run -it --rm -v /path/to/data:/data collagen-quant
+```
+
+**Pixi (Fast local setup):**
+```bash
+pixi install && pixi shell
+pip install -e .
+python -m pip install histomicstk --find-links https://girder.github.io/large_image_wheels
+```
+
+**Conda:**
+```bash
+conda env create -f env.yaml && conda activate collagen_quant
+pip install -e .
+python -m pip install histomicstk --find-links https://girder.github.io/large_image_wheels
+```
+
+> **Note:** GitHub Personal Access Token with `repo` scope required. See [Installation Guide](doc/installation.md) for details.
+
+### Basic Usage
 
 ```bash
-# Create environment from env.yaml
-mamba env create -f env.yaml
-
-# Activate environment
-mamba activate collagen_quant
-
-# Platform-Specific Dependencies
-
-## macOS
-brew install vips
-
-## Ubuntu/Debian
-sudo apt-get install libvips-dev libgdal-dev default-jre
-
-## Windows
-# Run in Git Bash - will prompt for installation directory
-bash setup_windows.sh
+# 1. Measure stain vectors in QuPath
+# 2. Run color deconvolution
+bash python/decon.sh     # or: pixi run decon
+# 3. Run segmentation
+bash python/seg.sh       # or: pixi run seg
 ```
 
-#### Notes for Windows Installation
-The `setup_windows.sh` script automatically:
-- Downloads and installs libvips 8.16.0
-- Saves installation path to `.vips_config.ini`
-- Configures Python scripts to use the correct path
-- Optionally creates conda environment
+## Documentation
 
-**Manual Installation:** Download from [libvips.org/install.html](https://www.libvips.org/install.html), extract, and update `.vips_config.ini`:
-```ini
-[libvips]
-install_dir = C:\your\path\to\vips-dev-8.16.0
-```
+| Guide | Description |
+|-------|-------------|
+| [Quick Start](doc/quickstart.md) | Step-by-step tutorial |
+| [Installation](doc/installation.md) | Platform-specific setup |
+| [Workflows](doc/workflows.md) | Parameters and troubleshooting |
+| [File Formats](doc/file-formats.md) | Input/output specifications |
+| [Docker Guide](doc/docker.md) | Container usage and HPC |
 
+<<<<<<< HEAD
 #### Run in Git Bash - will prompt for installation directory
 ```bash
 bash setup_windows.sh
@@ -248,3 +240,15 @@ If you use this pipeline in your research, please cite:
 ## Technical Details
 
 For detailed technical implementation and validation, see the Jupyter [notebook](./notebook/collagen_quantification_mouse.ipynb).
+=======
+## Output Files
+
+- `color_decon.ome.tiff` - Deconvolved channels
+- `PSR.ome.tiff` - PSR channel only
+- `collagen.ome.tiff` - Binary segmentation mask
+- `res.csv` - Quantification statistics (x0, y0, x1, y1, collagen_px, tissue_px, collagen_%)
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details
+>>>>>>> 221bd451e5071cb8e41711ccc4d95a25a73c82de

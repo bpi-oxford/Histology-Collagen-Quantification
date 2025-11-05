@@ -4,6 +4,7 @@ bioio-ome-tiff>=0.2.0
 bioio-tifffile
 zarr>=3.0.0
 bioio-ome-zarr>=3.0.2
+pyvips[binary]>=2.2.0
 scikit-image>=0.19.0
 pandas>=1.5.0
 numpy>=1.21.0
@@ -11,4 +12,6 @@ scipy>=1.9.0
 tifffile>=2022.5.4
 tqdm>=4.64.0
 ome-types>=0.4.0
-# git+ssh://git@github.com/Oxford-Zeiss-Centre-of-Excellence/pyHisto.git
+git+ssh://git@github.com/Oxford-Zeiss-Centre-of-Excellence/pyHisto.git
+# geopandas # moved to conda for GDAL dependencies
+# histomicstk # install separately: python -m pip install histomicstk --find-links https://girder.github.io/large_image_wheels
