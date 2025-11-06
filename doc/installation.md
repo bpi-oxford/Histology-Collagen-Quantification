@@ -36,14 +36,67 @@ apptainer build collagen-quant.sif docker-archive://collagen-quant.tar
 # Request SLURM interactive session (adjust resources as needed)
 srun -p short --mem=32G --cpus-per-task=8 --time=1-06:00:00 --pty bash
 
-# Run on HPC - Execute specific command
-apptainer exec collagen-quant.sif bash python/decon.sh
-
 # Interactive mode with bind mounts (access data and config directories)
 apptainer shell --bind /path/to/data:/data,/path/to/configs:/app/configs --pwd /app collagen-quant.sif
 
-# example
-apptainer shell --bind /well/kir-fritzsche/projects/archive/Nan/Nan_Fast_Green_PSR_Staining/split_scene/:/data,/users/kir-fritzsche/oyk357/projects/Histology-Collagen-Quantification/configs/:/app/configs --pwd /app ~/images/collagen-quant.sif
+# Run workflow with proper bind mounts
+apptainer exec --bind /path/to/data:/data,/path/to/configs:/app/configs --pwd /app collagen-quant.sif bash python/decon.sh
+```
+
+### BMRC Cluster - Automated Script
+
+For Oxford BMRC cluster users, use the provided script for easier job submission:
+
+```bash
+# 1. Edit the script configuration
+nano scripts/bmrc_apptainer_run.sh
+
+# Configure these variables:
+# - SIF_IMAGE: Path to your .sif file (default: ~/images/collagen-quant.sif)
+# - DATA_DIR: Your input data directory
+# - CONFIG_DIR: Your configs directory
+# - WORKFLOW: "decon", "seg", or "both"
+# - PARTITION: SLURM queue (short/medium/long)
+# - MEM/CPUS/TIME: Resource allocation
+
+# 2. Run from headnode (script handles srun submission)
+bash scripts/bmrc_apptainer_run.sh
+
+# The script will automatically run the interactive workflow (decon.sh/seg.sh)
+# You'll be able to respond to prompts and see output in real-time
+```
+
+**Script features:**
+- Validates all paths before submission
+- Auto-configures bind mounts for data, configs, and stain maps
+- Submits interactive job via `srun --pty` with specified resources
+- Runs workflow command directly with `apptainer exec` (allows interactive prompts)
+- Supports running deconvolution, segmentation, or both workflows
+- Working directory set to `/app` inside container
+
+**Example workflow:**
+```bash
+# Run deconvolution only
+# (edit WORKFLOW="decon" in script)
+bash scripts/bmrc_apptainer_run.sh
+
+# Run both workflows sequentially
+# (edit WORKFLOW="both" in script)
+bash scripts/bmrc_apptainer_run.sh
+```
+
+See `scripts/bmrc_apptainer_run.sh` for full configuration options.
+
+### Manual SLURM Submission
+
+For custom workflows, request an interactive session manually:
+
+```bash
+# Request interactive session
+srun -p short --mem=32G --cpus-per-task=8 --time=1-06:00:00 --pty bash
+
+# Run workflow with bind mounts
+apptainer exec --bind /path/to/data:/data,/path/to/configs:/app/configs --pwd /app collagen-quant.sif bash python/decon.sh
 ```
 
 ## Method 2: Pixi (Fastest for Local Development)
