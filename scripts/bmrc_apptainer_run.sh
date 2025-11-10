@@ -174,7 +174,6 @@ fi
 # Build bind mount string
 # =============================================================================
 
-<<<<<<< HEAD
 # Add Python source override if in development mode
 if [[ -n "$PYTHON_SRC_DIR" ]]; then
     if [[ ! -d "$PYTHON_SRC_DIR" ]]; then
@@ -188,9 +187,6 @@ else
 fi
 
 BIND_MOUNTS="$DATA_DIR:/data${CONFIG_MOUNT}${STAIN_MOUNT}${PYTHON_MOUNT}"
-=======
-BIND_MOUNTS="$DATA_DIR:/data${CONFIG_MOUNT}${STAIN_MOUNT}${DEV_MOUNT}"
->>>>>>> 76d47f0bfaa999fd37b2b53d3cb5e391903a5bd0
 
 # =============================================================================
 # Submit job
