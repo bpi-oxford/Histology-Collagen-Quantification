@@ -22,8 +22,65 @@ CONFIG_DIR="/users/kir-fritzsche/oyk357/projects/Histology-Collagen-Quantificati
 # Path to stain color map directory
 STAIN_MAP_DIR="/gpfs3/well/kir-fritzsche/projects/Histology-Collagen-Quantification/stain_color_map"
 
-# Workflow to run: "decon", "seg", or "both"
-WORKFLOW="decon"
+# =============================================================================
+# Interactive Configuration
+# =============================================================================
+
+# Prompt for development mode (Python source override)
+echo ""
+echo "================================================================"
+echo "Development Mode Configuration"
+echo "================================================================"
+echo "Do you want to override container code with local Python source?"
+echo "(Use this for testing code changes without rebuilding the container)"
+echo ""
+read -p "Enable development mode? [y/N]: " -n 1 -r DEV_MODE
+echo ""
+
+PYTHON_SRC_DIR=""
+if [[ $DEV_MODE =~ ^[Yy]$ ]]; then
+    DEFAULT_SRC="/users/kir-fritzsche/oyk357/projects/Histology-Collagen-Quantification/python"
+    read -p "Enter path to Python source directory [$DEFAULT_SRC]: " PYTHON_SRC_INPUT
+    PYTHON_SRC_DIR="${PYTHON_SRC_INPUT:-$DEFAULT_SRC}"
+    echo "Development mode enabled: $PYTHON_SRC_DIR"
+else
+    echo "Using code baked into the container"
+fi
+
+# Prompt for workflow selection
+echo ""
+echo "================================================================"
+echo "Workflow Selection"
+echo "================================================================"
+echo "Available workflows:"
+echo "  1) decon      - Color deconvolution only"
+echo "  2) seg        - Segmentation only (requires existing PSR output)"
+echo "  3) both       - Run deconvolution then segmentation"
+echo "  4) debug      - Debug single tile with diagnostics"
+echo "  5) test-czi   - Test CZI loading methods (diagnose channel issues)"
+echo ""
+read -p "Select workflow [1-5, default=1]: " WORKFLOW_CHOICE
+
+case "$WORKFLOW_CHOICE" in
+    2)
+        WORKFLOW="seg"
+        ;;
+    3)
+        WORKFLOW="both"
+        ;;
+    4)
+        WORKFLOW="debug"
+        ;;
+    5)
+        WORKFLOW="test-czi"
+        ;;
+    *)
+        WORKFLOW="decon"
+        ;;
+esac
+
+echo "Selected workflow: $WORKFLOW"
+echo ""
 
 # SLURM resource configuration
 PARTITION="short"           # Queue: short, medium, long
@@ -66,7 +123,19 @@ fi
 # Build bind mount string
 # =============================================================================
 
-BIND_MOUNTS="$DATA_DIR:/data${CONFIG_MOUNT}${STAIN_MOUNT}"
+# Add Python source override if in development mode
+if [[ -n "$PYTHON_SRC_DIR" ]]; then
+    if [[ ! -d "$PYTHON_SRC_DIR" ]]; then
+        echo "Warning: Python source directory not found at $PYTHON_SRC_DIR"
+        PYTHON_MOUNT=""
+    else
+        PYTHON_MOUNT=",$PYTHON_SRC_DIR:/app/python"
+    fi
+else
+    PYTHON_MOUNT=""
+fi
+
+BIND_MOUNTS="$DATA_DIR:/data${CONFIG_MOUNT}${STAIN_MOUNT}${PYTHON_MOUNT}"
 
 # =============================================================================
 # Submit job
@@ -79,6 +148,11 @@ echo "SIF Image:    $SIF_IMAGE"
 echo "Data Dir:     $DATA_DIR"
 echo "Config Dir:   $CONFIG_DIR"
 echo "Stain Map:    $STAIN_MAP_DIR"
+if [[ -n "$PYTHON_SRC_DIR" ]]; then
+    echo "Python Src:   $PYTHON_SRC_DIR (DEVELOPMENT MODE)"
+else
+    echo "Python Src:   [Using container code]"
+fi
 echo "Workflow:     $WORKFLOW"
 echo "Resources:    ${MEM} memory, ${CPUS} CPUs, ${TIME} time limit"
 echo "Partition:    $PARTITION"
@@ -97,8 +171,14 @@ case "$WORKFLOW" in
     both)
         CMD="bash python/decon.sh && bash python/seg.sh"
         ;;
+    debug)
+        CMD="bash python/debug_decon.sh"
+        ;;
+    test-czi)
+        CMD="bash python/test_czi.sh"
+        ;;
     *)
-        echo "Error: Unknown workflow '$WORKFLOW'. Use 'decon', 'seg', or 'both'"
+        echo "Error: Unknown workflow '$WORKFLOW'. Use 'decon', 'seg', 'both', 'debug', or 'test-czi'"
         exit 1
         ;;
 esac
