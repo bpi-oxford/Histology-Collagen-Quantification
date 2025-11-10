@@ -3,14 +3,17 @@
 ## Prerequisites
 
 **For all methods:**
-- GitHub Personal Access Token with `repo` scope ([create here](https://github.com/settings/tokens))
+- Git with submodule support
+- For pyHisto: Access to the Oxford-Zeiss-Centre-of-Excellence/pyHisto repository (SSH key or HTTPS credentials configured)
 
 ## Method 1: Docker (Recommended for Production/HPC)
 
 ```bash
+# Initialize git submodules (required for pyHisto)
+git submodule update --init --recursive
+
 # Build image
-export GITHUB_TOKEN=ghp_your_token_here
-docker build --build-arg GITHUB_TOKEN -t collagen-quant .
+docker build -t collagen-quant .
 
 # Run
 docker run -it --rm -v /path/to/data:/data collagen-quant
@@ -20,16 +23,41 @@ docker run -it --rm collagen-quant bash
 python -c "import pyvips, geopandas, bioio, histomicstk"
 ```
 
+**Note:** The Docker build now uses the pyHisto git submodule from `dependency/pyHisto` instead of requiring a GITHUB_TOKEN build argument.
+
 ### Convert to Apptainer/Singularity (HPC)
+
+**Automated Build (Recommended):**
+
+Use the provided build script to automate the entire process:
+
+```bash
+# Run the automated build script
+bash scripts/build_hpc_image.sh
+
+# This will:
+# 1. Check git submodules are initialized
+# 2. Build the Docker image
+# 3. Save to collagen-quant.tar
+# 4. Compress to collagen-quant.tar.gz
+
+# Then transfer to HPC cluster
+scp collagen-quant.tar.gz user@cluster:~/archive/images
+```
+
+**Manual Build:**
 
 ```bash
 # On local machine
 docker save collagen-quant:latest -o collagen-quant.tar
 gzip collagen-quant.tar
-scp collagen-quant.tar.gz user@cluster:~/images
+scp collagen-quant.tar.gz user@cluster:~/archive/images
+```
 
-# On HPC cluster
-cd ~/images
+**On HPC cluster:**
+
+```bash
+cd ~/archive/images
 gunzip collagen-quant.tar.gz  # Extract tar from tar.gz
 apptainer build collagen-quant.sif docker-archive://collagen-quant.tar
 
@@ -105,16 +133,23 @@ apptainer exec --bind /path/to/data:/data,/path/to/configs:/app/configs --pwd /a
 # Install pixi (if needed)
 curl -fsSL https://pixi.sh/install.sh | bash
 
+# Initialize git submodules (required for pyHisto)
+git submodule update --init --recursive
+
 # Setup environment
 pixi install
 pixi shell
 pip install -e .
+pip install -e ./dependency/pyHisto
 python -m pip install histomicstk --find-links https://girder.github.io/large_image_wheels
 ```
 
 ## Method 3: Conda (Traditional)
 
 ```bash
+# Initialize git submodules (required for pyHisto)
+git submodule update --init --recursive
+
 # Create environment
 conda env create -f env.yaml
 conda activate collagen_quant
@@ -123,6 +158,8 @@ conda activate collagen_quant
 pip install -e .
 python -m pip install histomicstk --find-links https://girder.github.io/large_image_wheels
 ```
+
+**Note:** The `env.yaml` includes `requirements.txt` which automatically installs pyHisto from `./dependency/pyHisto` in editable mode.
 
 ## Platform-Specific Notes
 
@@ -136,16 +173,27 @@ python -m pip install histomicstk --find-links https://girder.github.io/large_im
 
 ## Troubleshooting
 
-**"GITHUB_TOKEN not set" error:**
+**"pyHisto not found" error:**
 ```bash
-# Create token: https://github.com/settings/tokens (select 'repo' scope)
-export GITHUB_TOKEN=ghp_your_token_here
+# Ensure git submodules are initialized
+git submodule update --init --recursive
+
+# Verify pyHisto exists
+ls -la dependency/pyHisto
+```
+
+**SSH key issues with pyHisto submodule:**
+```bash
+# If you don't have SSH access, convert submodule to HTTPS
+git config submodule.dependency/pyHisto.url https://github.com/Oxford-Zeiss-Centre-of-Excellence/pyHisto.git
+git submodule sync
+git submodule update --init --recursive
 ```
 
 **Docker build fails with GPG errors:**
 ```bash
 docker system prune -f
-docker build --no-cache --build-arg GITHUB_TOKEN -t collagen-quant .
+docker build --no-cache -t collagen-quant .
 ```
 
 **histomicstk installation fails:**

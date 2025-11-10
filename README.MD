@@ -14,28 +14,41 @@ Automated collagen quantification pipeline for PSR (Picrosirius Red) + FG (Fast 
 
 ### Installation
 
+**First-time setup - Clone with submodules:**
+```bash
+# New clone
+git clone --recursive <repository-url>
+
+# Existing clone - initialize submodules
+git submodule update --init --recursive
+```
+
 **Docker (Production/HPC):**
 ```bash
-export GITHUB_TOKEN=ghp_your_token_here
-docker build --build-arg GITHUB_TOKEN -t collagen-quant .
+# No GITHUB_TOKEN needed - uses git submodule
+git submodule update --init --recursive
+docker build -t collagen-quant .
 docker run -it --rm -v /path/to/data:/data collagen-quant
 ```
 
 **Pixi (Fast local setup):**
 ```bash
+git submodule update --init --recursive
 pixi install && pixi shell
 pip install -e .
+pip install -e ./dependency/pyHisto
 python -m pip install histomicstk --find-links https://girder.github.io/large_image_wheels
 ```
 
 **Conda:**
 ```bash
+git submodule update --init --recursive
 conda env create -f env.yaml && conda activate collagen_quant
 pip install -e .
 python -m pip install histomicstk --find-links https://girder.github.io/large_image_wheels
 ```
 
-> **Note:** GitHub Personal Access Token with `repo` scope required. See [Installation Guide](doc/installation.md) for details.
+> **Note:** pyHisto is included as a git submodule in `dependency/pyHisto`. See [Installation Guide](doc/installation.md) for details.
 
 ### Basic Usage
 
@@ -63,8 +76,11 @@ bash setup_windows.sh
 ```
 
 #### Cluster Install
-On cluster environment often some dependency packages are not able to install via `sudo`, in particular `histomicstk`. It is recommneded to do manual `pyHisto` install and histomicstk installation 
-<!-- TODO: make code to automatically pull pyhisto, comment out the histomicstk and pyHisto in both repo, and do the dep install -->
+On cluster environments, pyHisto is now automatically handled via git submodules. Simply ensure you initialize submodules before building:
+```bash
+git submodule update --init --recursive
+```
+For `histomicstk`, it must be installed separately as it requires Java. See the [Installation Guide](doc/installation.md) for cluster-specific instructions.
 
 ### 2. Stain Vector Measurement in QuPath
 

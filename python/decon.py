@@ -131,6 +131,21 @@ def image_read(path):
     return image_np
 
 def tiled_deconv_helper(image,roi,W):
+    # Validate input image shape and format
+    if not isinstance(image, np.ndarray):
+        image = np.asarray(image)
+
+    # Check image dimensions
+    if image.ndim != 3:
+        raise ValueError(f"Expected 3D image (H, W, C), got {image.ndim}D with shape {image.shape}")
+
+    if image.shape[2] != 3:
+        raise ValueError(f"Expected 3 channels, got {image.shape[2]} channels with shape {image.shape}")
+
+    # Ensure C-contiguous for optimal performance and compatibility
+    if not image.flags['C_CONTIGUOUS']:
+        image = np.ascontiguousarray(image)
+
     imDeconvolved_batch = htk.preprocessing.color_deconvolution.color_deconvolution(image, W)
     return {"image_tile": imDeconvolved_batch.Stains, "roi":roi}
 
@@ -160,6 +175,10 @@ def stain_vector_separation_large(image, stain_color_map, stains, tile_size=2048
 
                 # extract a batch from the image tile
                 batch = image[row_start:row_end, col_start:col_end, :]
+
+                # Ensure batch is C-contiguous
+                if not batch.flags['C_CONTIGUOUS']:
+                    batch = np.ascontiguousarray(batch)
 
                 # tile deconvolution
                 imDeconvolved_batch = htk.preprocessing.color_deconvolution.color_deconvolution(batch, W)
@@ -200,9 +219,15 @@ def stain_vector_separation_large(image, stain_color_map, stains, tile_size=2048
                 if tile_idx < len(region_to_process):
                     row_start, row_end, col_start, col_end = region_to_process[tile_idx]
                     if isinstance(image, np.ndarray):
-                        region_to_process_chuck.append({"tile": image[row_start:row_end,col_start:col_end,:],"roi":(row_start,row_end,col_start,col_end)})
+                        tile = image[row_start:row_end,col_start:col_end,:]
                     else:
-                        region_to_process_chuck.append({"tile": image[row_start:row_end,col_start:col_end,:].compute(),"roi":(row_start,row_end,col_start,col_end)})
+                        tile = image[row_start:row_end,col_start:col_end,:].compute()
+
+                    # Ensure tile is C-contiguous before adding to processing queue
+                    if not tile.flags['C_CONTIGUOUS']:
+                        tile = np.ascontiguousarray(tile)
+
+                    region_to_process_chuck.append({"tile": tile,"roi":(row_start,row_end,col_start,col_end)})
                 else:
                     break
 
