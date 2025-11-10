@@ -10,26 +10,40 @@ Automated collagen quantification pipeline for PSR (Picrosirius Red) + FG (Fast 
 
 ### Environment Setup
 
+**First time setup - Clone with submodules:**
+```bash
+# New clone
+git clone --recursive <repository-url>
+
+# Existing clone - initialize submodules
+git submodule update --init --recursive
+```
+
 **Docker (Production/HPC):**
 ```bash
-export GITHUB_TOKEN=ghp_your_token_here
-docker build --build-arg GITHUB_TOKEN -t collagen-quant .
+# No longer requires GITHUB_TOKEN - uses local dependency/pyHisto submodule
+git submodule update --init --recursive
+docker build -t collagen-quant .
 docker run -it --rm -v /path/to/data:/data collagen-quant
 ```
 
 **Pixi (Local development - fastest):**
 ```bash
+git submodule update --init --recursive
 pixi install
 pixi shell
 pip install -e .
+pip install -e ./dependency/pyHisto
 python -m pip install histomicstk --find-links https://girder.github.io/large_image_wheels
 ```
 
 **Conda (Traditional):**
 ```bash
+git submodule update --init --recursive
 conda env create -f env.yaml
 conda activate collagen_quant
 pip install -e .
+pip install -e ./dependency/pyHisto
 python -m pip install histomicstk --find-links https://girder.github.io/large_image_wheels
 ```
 
@@ -72,12 +86,14 @@ pixi run notebook    # Port 8888
 - **Image I/O**: `bioio`, `pyvips`, `tifffile`
 - **Processing**: `histomicstk`, `scikit-image`, `numpy`, `scipy`
 - **Geospatial**: `geopandas`, `rasterio` (for manual GeoJSON masks)
-- **Private**: `pyHisto` (requires GITHUB_TOKEN with `repo` scope)
+- **Private**: `pyHisto` (installed from `dependency/pyHisto` git submodule)
 
-**Important**: `histomicstk` requires Java (JDK) and must be installed separately:
-```bash
-python -m pip install histomicstk --find-links https://girder.github.io/large_image_wheels
-```
+**Important dependencies**:
+- `histomicstk` requires Java (JDK) and must be installed separately:
+  ```bash
+  python -m pip install histomicstk --find-links https://girder.github.io/large_image_wheels
+  ```
+- `pyHisto` is included as a git submodule in `dependency/pyHisto` and installed in editable mode
 
 ### Data Flow
 

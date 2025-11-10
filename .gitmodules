@@ -1,3 +1,3 @@
-[submodule "dependency/ndPytools"]
-	path = dependency/ndPytools
-	url = git@github.com:fepegar/ndPytools.git
+[submodule "dependency/pyHisto"]
+	path = dependency/pyHisto
+	url = git@github.com:Oxford-Zeiss-Centre-of-Excellence/pyHisto.git

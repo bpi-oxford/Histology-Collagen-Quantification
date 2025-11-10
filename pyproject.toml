@@ -23,6 +23,9 @@ dependencies = [
     "ome-types>=0.4.0",
 ]
 
+# Note: pyHisto is installed separately from dependency/pyHisto
+# See installation documentation for details
+
 [project.optional-dependencies]
 dev = [
     "jupyter",

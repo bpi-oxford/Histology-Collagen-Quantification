@@ -38,22 +38,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pixi run pip install -r /tmp/requirements_temp.txt && \
     rm /tmp/requirements_temp.txt
 
-# Install pyHisto separately with --no-deps (since histomicstk is already installed)
-# For private repos, use build args to pass GitHub credentials
-ARG GITHUB_TOKEN
-RUN if [ -z "$GITHUB_TOKEN" ]; then \
-        echo "ERROR: GITHUB_TOKEN build arg is required for private repo access"; \
-        echo "Build with: docker build --build-arg GITHUB_TOKEN=your_token ."; \
-        exit 1; \
-    fi && \
-    git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "ssh://git@github.com/" && \
-    pixi run pip install --no-deps git+https://${GITHUB_TOKEN}@github.com/Oxford-Zeiss-Centre-of-Excellence/pyHisto.git; \
-    PIP_EXIT=$?; \
-    git config --global --unset-all url."https://${GITHUB_TOKEN}@github.com/".insteadOf || true; \
-    if [ $PIP_EXIT -ne 0 ]; then \
-        echo "ERROR: pyHisto install failed with exit code $PIP_EXIT"; \
-        exit $PIP_EXIT; \
-    fi
+# Copy pyHisto dependency first (from git submodule)
+COPY dependency/pyHisto/ ./dependency/pyHisto/
+
+# Install pyHisto in editable mode with --no-deps (since histomicstk is already installed)
+RUN pixi run pip install --no-deps -e ./dependency/pyHisto
 
 # Clean up temporary file
 RUN rm env_pixi.yaml
