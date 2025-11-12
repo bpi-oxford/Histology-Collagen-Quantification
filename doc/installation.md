@@ -1,119 +1,236 @@
 # Installation Guide
 
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Installation Methods](#installation-methods)
+  - [Method 1: Docker (Local Build)](#method-1-docker-local-build)
+  - [Method 2: Pixi (Local Development)](#method-2-pixi-fastest-for-local-development)
+  - [Method 3: Conda (Traditional)](#method-3-conda-traditional)
+- [HPC/Cluster Deployment](#hpccluster-deployment)
+  - [General HPC Setup](#convert-to-apptainersingularity-hpc)
+  - [BMRC Cluster Build](#bmrc-cluster-build)
+  - [BMRC Cluster Usage](#bmrc-cluster---automated-script)
+  - [Manual SLURM Submission](#manual-slurm-submission)
+- [Platform-Specific Notes](#platform-specific-notes)
+- [Troubleshooting](#troubleshooting)
+- [Verify Installation](#verify-installation)
+
 ## Prerequisites
 
 **For all methods:**
 - Git with submodule support
 - For pyHisto: Access to the Oxford-Zeiss-Centre-of-Excellence/pyHisto repository (SSH key or HTTPS credentials configured)
 
-## Method 1: Docker (Recommended for Production/HPC)
+## Installation Methods
+
+### Method 1: Docker (Local Build)
+
+Build Docker image on your local machine (requires Docker Desktop or Docker Engine):
 
 ```bash
 # Initialize git submodules (required for pyHisto)
 git submodule update --init --recursive
 
-# Build image
+# Build image using automated script
+bash scripts/build_docker_image.sh
+
+# Or manually:
 docker build -t collagen-quant .
 
-# Run
+# Test locally
 docker run -it --rm -v /path/to/data:/data collagen-quant
-
-# Test
-docker run -it --rm collagen-quant bash
-python -c "import pyvips, geopandas, bioio, histomicstk"
+docker run -it --rm collagen-quant python -c "import pyvips, geopandas, bioio, histomicstk"
 ```
 
-**Note:** The Docker build now uses the pyHisto git submodule from `dependency/pyHisto` instead of requiring a GITHUB_TOKEN build argument.
+**Note:** The Docker build uses the pyHisto git submodule from `dependency/pyHisto` instead of requiring a GITHUB_TOKEN build argument.
+
+**Next steps:**
+- For local usage: Run workflows directly with `docker run`
+- For HPC deployment: See [HPC/Cluster Deployment](#hpccluster-deployment) section below
+
+## HPC/Cluster Deployment
 
 ### Convert to Apptainer/Singularity (HPC)
 
-**Automated Build (Recommended):**
+For general HPC clusters (non-BMRC), use the Docker archive approach:
 
-Use the provided build script to automate the entire process:
-
+**On local machine:**
 ```bash
-# Run the automated build script
-bash scripts/build_hpc_image.sh
+# Build and export Docker image
+bash scripts/build_docker_image.sh
 
-# This will:
-# 1. Check git submodules are initialized
-# 2. Build the Docker image
-# 3. Save to collagen-quant.tar
-# 4. Compress to collagen-quant.tar.gz
-
-# Then transfer to HPC cluster
-scp collagen-quant.tar.gz user@cluster:~/archive/images
-```
-
-**Manual Build:**
-
-```bash
-# On local machine
-docker save collagen-quant:latest -o collagen-quant.tar
-gzip collagen-quant.tar
+# Transfer to HPC cluster
 scp collagen-quant.tar.gz user@cluster:~/archive/images
 ```
 
 **On HPC cluster:**
-
 ```bash
 cd ~/archive/images
 gunzip collagen-quant.tar.gz  # Extract tar from tar.gz
 apptainer build collagen-quant.sif docker-archive://collagen-quant.tar
 
-# Request SLURM interactive session (adjust resources as needed)
-srun -p short --mem=32G --cpus-per-task=8 --time=1-06:00:00 --pty bash
+# Test image
+apptainer exec collagen-quant.sif python -c "import bioio, pyvips, histomicstk, geopandas"
 
-# Interactive mode with bind mounts (access data and config directories)
-apptainer shell --bind /path/to/data:/data,/path/to/configs:/app/configs --pwd /app collagen-quant.sif
-
-# Run workflow with proper bind mounts
-apptainer exec --bind /path/to/data:/data,/path/to/configs:/app/configs --pwd /app collagen-quant.sif bash python/decon.sh
+# Run workflow with bind mounts
+srun -p short --mem=32G --cpus-per-task=8 --time=1-06:00:00 --pty \
+  apptainer exec --bind /path/to/data:/data --pwd /app \
+  collagen-quant.sif bash python/decon.sh
 ```
 
-### BMRC Cluster - Automated Script
+### BMRC Cluster Build
 
-For Oxford BMRC cluster users, use the provided script for easier job submission:
+For Oxford BMRC cluster users, there are **two build options**:
+
+#### Option 1: Build from apptainer.def on BMRC (Recommended)
+
+Build directly on BMRC using native Apptainer definition file. This is the most reliable method for BMRC:
+
+**On BMRC cluster - Method A: Using interactive script (recommended):**
+```bash
+# Run the interactive build script
+bash scripts/build_hpc_image.sh
+
+# Press Enter to select default option 1 (apptainer.def)
+# The script will:
+# - Validate prerequisites and check git submodules
+# - Setup build environment and cache directories
+# - Build the SIF image (~20-40 minutes)
+# - Test the built image
+```
+
+**On BMRC cluster - Method B: Direct command:**
+```bash
+# Load Apptainer module
+module load Apptainer
+
+# Ensure git submodules are initialized
+git submodule update --init --recursive
+
+# Navigate to repository
+cd /gpfs3/well/kir-fritzsche/projects/Histology-Collagen-Quantification
+
+# Build SIF image directly (20-40 minutes)
+apptainer build --fakeroot ~/images/collagen-quant.sif apptainer.def
+
+# Test the image
+apptainer exec ~/images/collagen-quant.sif python -c "import bioio, pyvips, histomicstk, geopandas, pytest; print('All dependencies OK')"
+```
+
+**Advantages:**
+- Native Apptainer format - most reliable on HPC
+- No Docker required on local machine
+- No file transfer needed
+- Works on all BMRC systems with Apptainer
+
+**Build time:** 20-40 minutes for first build (cached layers speed up rebuilds)
+
+**Troubleshooting:**
+- If `--fakeroot` fails, contact BMRC support to enable fakeroot for your account
+- Build uses `/well/kir/scratch/kir-fritzsche/` for cache (falls back to `~/tmp` if unavailable)
+
+#### Option 2: From Docker Archive
+
+Build Docker image on local machine, then convert to Apptainer SIF on BMRC:
+
+**On local machine (with Docker):**
+```bash
+# Build and export Docker image
+bash scripts/build_docker_image.sh
+
+# Transfer to BMRC
+scp collagen-quant.tar.gz user@bmrc:/users/kir-fritzsche/oyk357/archive/images/
+```
+
+**On BMRC cluster:**
+```bash
+# Run interactive build script
+bash scripts/build_hpc_image.sh
+
+# Follow prompts:
+# - Select option 2 (From Docker archive)
+# - Default path: /users/kir-fritzsche/oyk357/archive/images/collagen-quant.tar.gz (press Enter to use)
+```
+
+The script will:
+1. Validate prerequisites (apptainer, BMRC environment)
+2. Setup build environment in `/well/kir/scratch/kir-fritzsche/apptainer_build/$USER`
+3. Extract Docker archive to scratch
+4. Build Apptainer SIF image (~10-20 minutes)
+5. Test the built image
+6. Output SIF location: `~/images/collagen-quant.sif`
+
+**Advantages:**
+- Faster conversion (10-20 minutes vs 20-40 minutes)
+- Useful if you already have Docker image locally
+- Same image can be tested locally with Docker
+
+**Which option to choose?**
+- **Option 1 (apptainer.def)**: Best for BMRC, no Docker needed, most reliable ✅
+- **Option 2 (Docker archive)**: Best if you have Docker locally and want faster conversion
+
+### BMRC Cluster - Running Workflows
+
+After building the SIF image, use the automated script for interactive workflow execution:
 
 ```bash
-# 1. Edit the script configuration
+bash scripts/bmrc_apptainer_run.sh
+```
+
+**Interactive Prompts:**
+
+The script will ask you:
+
+1. **Development Mode**: Override container code with local Python source?
+   - `y`: Enable development mode (mount local `python/` directory)
+   - `n`: Use code baked into container (default)
+
+2. **Workflow Selection**: Which workflow to run?
+   - `1`: Color deconvolution only
+   - `2`: Segmentation only (requires existing PSR output)
+   - `3`: Both deconvolution and segmentation
+   - `4`: Debug mode (single tile with diagnostics)
+   - `5`: Run pytest for CZI loading tests
+
+**Configuration (edit in script if needed):**
+```bash
 nano scripts/bmrc_apptainer_run.sh
 
-# Configure these variables:
-# - SIF_IMAGE: Path to your .sif file (default: ~/images/collagen-quant.sif)
-# - DATA_DIR: Your input data directory
-# - CONFIG_DIR: Your configs directory
-# - WORKFLOW: "decon", "seg", or "both"
-# - PARTITION: SLURM queue (short/medium/long)
-# - MEM/CPUS/TIME: Resource allocation
-
-# 2. Run from headnode (script handles srun submission)
-bash scripts/bmrc_apptainer_run.sh
-
-# The script will automatically run the interactive workflow (decon.sh/seg.sh)
-# You'll be able to respond to prompts and see output in real-time
+# Key variables:
+SIF_IMAGE="$HOME/images/collagen-quant.sif"
+DATA_DIR="/well/kir-fritzsche/projects/..."
+CONFIG_DIR="/users/.../configs"
+PARTITION="short"        # SLURM queue
+MEM="32G"               # Memory allocation
+CPUS="8"                # CPU cores
+TIME="1-06:00:00"       # Time limit
 ```
 
 **Script features:**
+- Interactive prompts for workflow and development mode
 - Validates all paths before submission
 - Auto-configures bind mounts for data, configs, and stain maps
 - Submits interactive job via `srun --pty` with specified resources
-- Runs workflow command directly with `apptainer exec` (allows interactive prompts)
-- Supports running deconvolution, segmentation, or both workflows
-- Working directory set to `/app` inside container
+- Allows responding to workflow prompts in real-time
+- Development mode for testing code changes without rebuilding
 
-**Example workflow:**
+**Development Mode Details:**
+
+When enabled, development mode:
+- Mounts local `python/` directory to `/app/python` in container
+- Changes to Python code are immediately reflected
+- Useful for debugging, testing fixes, and rapid iteration
+- No need to rebuild SIF image for each code change
+
+**Example usage:**
 ```bash
-# Run deconvolution only
-# (edit WORKFLOW="decon" in script)
+# Run with development mode
 bash scripts/bmrc_apptainer_run.sh
-
-# Run both workflows sequentially
-# (edit WORKFLOW="both" in script)
-bash scripts/bmrc_apptainer_run.sh
+# Answer "y" for development mode
+# Provide path: /users/kir-fritzsche/oyk357/projects/Histology-Collagen-Quantification/python
+# Select workflow: 1 (decon)
 ```
-
-See `scripts/bmrc_apptainer_run.sh` for full configuration options.
 
 ### Manual SLURM Submission
 
@@ -209,24 +326,54 @@ docker build --no-cache -t collagen-quant .
 
 **Apptainer build fails with tar header error:**
 - Apptainer's `docker-archive://` requires an uncompressed tar file
-- Extract first: `gunzip collagen-quant.tar.gz`
-- Then build: `apptainer build collagen-quant.sif docker-archive://collagen-quant.tar`
+- Use the automated build script which handles this automatically:
+  ```bash
+  bash scripts/build_hpc_image.sh  # Select option 1
+  ```
+- Or manually:
+  - Extract first: `gunzip collagen-quant.tar.gz`
+  - Then build: `apptainer build collagen-quant.sif docker-archive://collagen-quant.tar`
+
+**BMRC build script fails with "apptainer command not found":**
+```bash
+# Load Apptainer module on BMRC
+module load Apptainer
+
+# Then run the build script
+bash scripts/build_hpc_image.sh
+```
+
+**BMRC build fails with "Permission denied" or scratch directory not accessible:**
+- The build script needs `/well/kir/scratch/kir-fritzsche/apptainer_build/$USER` for temporary build files
+- If this directory isn't accessible, the script will prompt to use `~/tmp/apptainer_build` instead
+- **Check group scratch access**:
+  ```bash
+  # Verify you have access to the group scratch space
+  ls -ld /well/kir/scratch/kir-fritzsche
+
+  # If you don't have access, contact your group admin (kir-fritzsche group)
+  ```
+- **Alternative**: Use home directory for build (watch quota limits):
+  ```bash
+  # The script will automatically prompt to use ~/tmp/apptainer_build
+  # Note: Large build files may fill your home directory quota
+  # Accept the prompt with 'Y' to proceed with home directory build
+  ```
 
 **Cluster home directory quota exceeded:**
 - Apptainer cache (`~/.apptainer`) and SIF files can fill home directory quota
-- **Solution**: Build SIF files directly in scratch, symlink cache only
+- **Solution (BMRC)**: Use group scratch space for Apptainer cache
   ```bash
-  # Symlink Apptainer cache to scratch
-  mkdir -p /scratch/$USER/apptainer_cache
+  # Symlink Apptainer cache to group scratch
+  mkdir -p /well/kir/scratch/kir-fritzsche/apptainer_cache/$USER
   rm -rf ~/.apptainer  # Remove if exists
-  ln -s /scratch/$USER/apptainer_cache ~/.apptainer
+  ln -s /well/kir/scratch/kir-fritzsche/apptainer_cache/$USER ~/.apptainer
 
-  # Build SIF directly in scratch (not home directory)
-  cd /scratch/$USER/
-  apptainer build /scratch/$USER/collagen-quant.sif docker-archive://collagen-quant.tar
+  # The build script automatically uses scratch for cache and temp files
+  bash scripts/build_hpc_image.sh
   ```
 - Verify cache symlink: `ls -la ~ | grep apptainer` should show symlink
-- Store all SIF files in `/scratch/$USER/` to avoid quota issues
+- The build script automatically handles this when using `/well/kir/scratch/kir-fritzsche`
 
 ## Verify Installation
 

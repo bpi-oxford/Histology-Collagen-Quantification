@@ -450,7 +450,9 @@ def main(args):
     # read large tiled image
     print("Reading large tiled image...")
     if os.path.splitext(args.input)[1].lower() == ".czi":
-        image_np = io.czi_read(IMG_PATH,skip=1)
+        # Use sequential loading (parallel=False) for best I/O performance
+        # Benchmarks show threading provides no speedup for CZI tile loading (I/O-bound)
+        image_np = io.czi_read(IMG_PATH, skip=1, parallel=False, verbose=True)
     elif os.path.splitext(args.input)[1].lower() in [".tif",".tiff"]:
         image_np = io.tiff_read(IMG_PATH)
 

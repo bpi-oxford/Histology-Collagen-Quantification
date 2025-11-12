@@ -2,6 +2,27 @@
 
 Automated collagen quantification pipeline for PSR (Picrosirius Red) + FG (Fast Green) stained whole slide images.
 
+## Table of Contents
+
+- [Features](#features)
+- [Quick Start](#quick-start)
+  - [Installation](#installation)
+  - [Basic Usage](#basic-usage)
+- [Documentation](#documentation)
+- [Setup Instructions](#setup-instructions)
+  - [Windows Setup](#windows-setup)
+  - [Local Development Setup](#local-development-setup)
+  - [HPC/Cluster Setup](#cluster-install)
+  - [BMRC Cluster - Apptainer Build](#bmrc-cluster---apptainer-build)
+- [Workflow Steps](#workflow-steps)
+  - [1. Stain Vector Measurement](#2-stain-vector-measurement-in-qupath)
+  - [2. Color Deconvolution](#3-color-deconvolution)
+  - [3. Collagen Segmentation](#4-collagen-segmentation)
+- [Configuration](#script-configuration-options)
+- [File Structure](#inputoutput-file-structure)
+- [Advanced Features](#advanced-features)
+- [Technical Details](#technical-details)
+
 ## Features
 
 - Multi-format support: CZI, TIFF, OME-TIFF
@@ -9,6 +30,7 @@ Automated collagen quantification pipeline for PSR (Picrosirius Red) + FG (Fast 
 - Multi-level Otsu thresholding
 - Tiled processing for large WSI
 - Docker & Apptainer/Singularity support
+- Development mode for live code editing in containers
 
 ## Quick Start
 
@@ -25,7 +47,6 @@ git submodule update --init --recursive
 
 **Docker (Production/HPC):**
 ```bash
-# No GITHUB_TOKEN needed - uses git submodule
 git submodule update --init --recursive
 docker build -t collagen-quant .
 docker run -it --rm -v /path/to/data:/data collagen-quant
@@ -70,19 +91,73 @@ bash python/seg.sh       # or: pixi run seg
 | [File Formats](doc/file-formats.md) | Input/output specifications |
 | [Docker Guide](doc/docker.md) | Container usage and HPC |
 
-#### Run in Git Bash - will prompt for installation directory
+## Setup Instructions
+
+### Windows Setup
+
+Run in Git Bash - will prompt for installation directory:
 ```bash
 bash setup_windows.sh
 ```
 
-#### Cluster Install
-On cluster environments, pyHisto is now automatically handled via git submodules. Simply ensure you initialize submodules before building:
+### Local Development Setup
+
+Use Pixi (recommended for fastest setup) or Conda. See [Installation Guide](doc/installation.md) for detailed instructions.
+
+### Cluster Install
+
+On cluster environments, pyHisto is automatically handled via git submodules. Ensure submodules are initialized before building:
 ```bash
 git submodule update --init --recursive
 ```
-For `histomicstk`, it must be installed separately as it requires Java. See the [Installation Guide](doc/installation.md) for cluster-specific instructions.
 
-### 2. Stain Vector Measurement in QuPath
+For Docker/Apptainer deployment, see the BMRC section below and the [Installation Guide](doc/installation.md).
+
+### BMRC Cluster - Apptainer Build
+
+For Oxford BMRC cluster users, there are two build options:
+
+**Option 1: Build from apptainer.def on BMRC (Recommended)**
+```bash
+# On BMRC cluster - Method A: Using interactive script (easier)
+bash scripts/build_hpc_image.sh
+# Press Enter to select default option 1 (apptainer.def)
+
+# Or Method B: Direct command
+module load Apptainer
+git submodule update --init --recursive
+cd /gpfs3/well/kir-fritzsche/projects/Histology-Collagen-Quantification
+apptainer build --fakeroot ~/images/collagen-quant.sif apptainer.def
+```
+
+**Option 2: From Docker Archive**
+```bash
+# On local machine (with Docker installed)
+bash scripts/build_docker_image.sh
+
+# Transfer to BMRC
+scp collagen-quant.tar.gz user@bmrc:/users/kir-fritzsche/oyk357/archive/images/
+
+# On BMRC cluster - Build SIF from archive
+bash scripts/build_hpc_image.sh
+# Select option 2 (uses default path: /users/kir-fritzsche/oyk357/archive/images/collagen-quant.tar.gz)
+```
+
+**Running the Workflow:**
+```bash
+# Interactive workflow with prompts
+bash scripts/bmrc_apptainer_run.sh
+# Select workflow (decon/seg/both/debug/pytest-czi)
+# Enable development mode to override container code (optional)
+```
+
+**Note:** The script uses `/well/kir/scratch/kir-fritzsche/` for temporary build files. If you don't have access, the script will prompt to use home directory instead.
+
+See [BMRC Installation Guide](doc/installation.md#bmrc-cluster-build) for detailed configuration options.
+
+## Workflow Steps
+
+### 1. Stain Vector Measurement in QuPath
 
 1. Open your PSR+FG stained image in QuPath
 2. Go to `Analyze` → `Preprocessing` → `Estimate stain vectors`
@@ -98,7 +173,7 @@ For `histomicstk`, it must be installed separately as it requires Java. See the 
 }
 ```
 
-### 3. Color Deconvolution
+### 2. Color Deconvolution
 
 Run the interactive color deconvolution script to separate stain channels:
 
@@ -120,7 +195,7 @@ The script will automatically:
 - Process all images in batch
 - Provide progress feedback and error handling
 
-### 4. Collagen Segmentation
+### 3. Collagen Segmentation
 
 Run the interactive segmentation script to quantify collagen:
 
@@ -244,6 +319,31 @@ Both interactive scripts automatically handle batch processing:
 - Provides quick statistics summary for each processed sample
 
 For fully automated processing without prompts, you can modify the scripts or call the underlying Python modules directly with command-line arguments.
+
+### Development Mode (Container Code Override)
+
+For BMRC Apptainer users, development mode allows testing code changes without rebuilding the container image:
+
+**Interactive prompt (recommended):**
+```bash
+bash scripts/bmrc_apptainer_run.sh
+# Answer "y" when prompted for development mode
+# Provide path to local Python source directory
+```
+
+**How it works:**
+- Mounts local `python/` directory over container's `/app/python`
+- Changes to Python code are immediately reflected in container
+- Useful for debugging, testing fixes, and rapid iteration
+- No need to rebuild SIF image for each code change
+
+**Use cases:**
+- Testing bug fixes before committing
+- Experimenting with parameter changes
+- Debugging pipeline issues with diagnostic prints
+- Developing new features
+
+See `scripts/bmrc_apptainer_run.sh` for configuration details.
 
 <!-- ## Citation
 

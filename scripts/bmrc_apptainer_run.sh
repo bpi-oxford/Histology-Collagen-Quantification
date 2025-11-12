@@ -62,13 +62,15 @@ echo "================================================================"
 echo "Workflow Selection"
 echo "================================================================"
 echo "Available workflows:"
-echo "  1) decon      - Color deconvolution only"
-echo "  2) seg        - Segmentation only (requires existing PSR output)"
-echo "  3) both       - Run deconvolution then segmentation"
-echo "  4) debug      - Debug single tile with diagnostics"
-echo "  5) test-czi   - Test CZI loading methods (diagnose channel issues)"
+echo "  1) decon         - Color deconvolution only"
+echo "  2) seg           - Segmentation only (requires existing PSR output)"
+echo "  3) both          - Run deconvolution then segmentation"
+echo "  4) debug         - Debug single tile with diagnostics"
+echo "  5) pytest-czi    - Run pytest regression for parallel CZI loading"
+echo "  6) benchmark-czi - Benchmark CZI loading with different parallel strategies"
+echo "  7) profile-czi   - Profile CZI loading to identify bottlenecks"
 echo ""
-read -p "Select workflow [1-5, default=1]: " WORKFLOW_CHOICE
+read -p "Select workflow [1-7, default=1]: " WORKFLOW_CHOICE
 
 case "$WORKFLOW_CHOICE" in
     2)
@@ -81,7 +83,13 @@ case "$WORKFLOW_CHOICE" in
         WORKFLOW="debug"
         ;;
     5)
-        WORKFLOW="test-czi"
+        WORKFLOW="pytest-czi"
+        ;;
+    6)
+        WORKFLOW="benchmark-czi"
+        ;;
+    7)
+        WORKFLOW="profile-czi"
         ;;
     *)
         WORKFLOW="decon"
@@ -101,7 +109,7 @@ LOCAL_REPO_DIR="/users/kir-fritzsche/oyk357/projects/Histology-Collagen-Quantifi
 
 # SLURM resource configuration
 PARTITION="short"           # Queue: short, medium, long
-MEM="32G"                   # Memory allocation
+MEM="128G"                   # Memory allocation
 CPUS="8"                    # CPU cores
 TIME="1-06:00:00"           # Time limit (D-HH:MM:SS)
 
@@ -153,11 +161,15 @@ if [[ "$DEV_MODE" == "true" ]]; then
         exit 1
     fi
 
-    # Build dev mount string for python, dependency, and optionally stain_color_map
+    # Build dev mount string for python, dependency, benchmark, and optionally stain_color_map
     DEV_MOUNT=",$LOCAL_REPO_DIR/python:/app/python"
 
     if [[ -d "$LOCAL_REPO_DIR/dependency" ]]; then
         DEV_MOUNT="$DEV_MOUNT,$LOCAL_REPO_DIR/dependency:/app/dependency"
+    fi
+
+    if [[ -d "$LOCAL_REPO_DIR/benchmark" ]]; then
+        DEV_MOUNT="$DEV_MOUNT,$LOCAL_REPO_DIR/benchmark:/app/benchmark"
     fi
 
     # If using local stain map, override STAIN_MOUNT
@@ -167,6 +179,7 @@ if [[ "$DEV_MODE" == "true" ]]; then
 
     echo "  Mounting: $LOCAL_REPO_DIR/python -> /app/python"
     [[ -d "$LOCAL_REPO_DIR/dependency" ]] && echo "  Mounting: $LOCAL_REPO_DIR/dependency -> /app/dependency"
+    [[ -d "$LOCAL_REPO_DIR/benchmark" ]] && echo "  Mounting: $LOCAL_REPO_DIR/benchmark -> /app/benchmark"
     [[ -d "$LOCAL_REPO_DIR/stain_color_map" ]] && echo "  Mounting: $LOCAL_REPO_DIR/stain_color_map -> /app/stain_color_map"
 fi
 
@@ -175,18 +188,25 @@ fi
 # =============================================================================
 
 # Add Python source override if in development mode
+BENCHMARK_MOUNT=""
 if [[ -n "$PYTHON_SRC_DIR" ]]; then
     if [[ ! -d "$PYTHON_SRC_DIR" ]]; then
         echo "Warning: Python source directory not found at $PYTHON_SRC_DIR"
         PYTHON_MOUNT=""
     else
         PYTHON_MOUNT=",$PYTHON_SRC_DIR:/app/python"
+
+        # Also mount benchmark directory if it exists alongside python source
+        BENCHMARK_DIR="$(dirname "$PYTHON_SRC_DIR")/benchmark"
+        if [[ -d "$BENCHMARK_DIR" ]]; then
+            BENCHMARK_MOUNT=",$BENCHMARK_DIR:/app/benchmark"
+        fi
     fi
 else
     PYTHON_MOUNT=""
 fi
 
-BIND_MOUNTS="$DATA_DIR:/data${CONFIG_MOUNT}${STAIN_MOUNT}${PYTHON_MOUNT}"
+BIND_MOUNTS="$DATA_DIR:/data${CONFIG_MOUNT}${STAIN_MOUNT}${PYTHON_MOUNT}${BENCHMARK_MOUNT}"
 
 # =============================================================================
 # Submit job
@@ -201,6 +221,7 @@ echo "Config Dir:   $CONFIG_DIR"
 echo "Stain Map:    $STAIN_MAP_DIR"
 if [[ -n "$PYTHON_SRC_DIR" ]]; then
     echo "Python Src:   $PYTHON_SRC_DIR (DEVELOPMENT MODE)"
+    [[ -n "$BENCHMARK_MOUNT" ]] && echo "Benchmark:    $BENCHMARK_DIR (mounted)"
 else
     echo "Python Src:   [Using container code]"
 fi
@@ -227,11 +248,17 @@ case "$WORKFLOW" in
     debug)
         CMD="bash python/debug_decon.sh"
         ;;
-    test-czi)
-        CMD="bash python/test_czi.sh"
+    pytest-czi)
+        CMD="pytest dependency/pyHisto/tests/test_read_czi.py -k parallel_subset -vv"
+        ;;
+    benchmark-czi)
+        CMD="bash benchmark/benchmark_czi.sh"
+        ;;
+    profile-czi)
+        CMD="bash benchmark/profile_czi.sh"
         ;;
     *)
-        echo "Error: Unknown workflow '$WORKFLOW'. Use 'decon', 'seg', 'both', 'debug', or 'test-czi'"
+        echo "Error: Unknown workflow '$WORKFLOW'. Use 'decon', 'seg', 'both', 'debug', 'pytest-czi', 'benchmark-czi', or 'profile-czi'"
         exit 1
         ;;
 esac

@@ -23,7 +23,7 @@ ENV JAVA_HOME=/usr/lib/jvm/default-java
 # Create temporary env.yaml without pip requirements for pixi import
 RUN grep -v '\-r requirements.txt' env.yaml > env_pixi.yaml
 
-# Initialize pixi from conda env.yaml and install dependencies
+# Initialize pixi from conda env.yaml and install dependencies (includes pytest)
 RUN pixi init --import env_pixi.yaml && pixi install -v
 
 # Install histomicstk FIRST (with BuildKit cache mount for faster rebuilds)

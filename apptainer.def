@@ -1,0 +1,69 @@
+Bootstrap: docker
+From: ghcr.io/prefix-dev/pixi:latest
+
+%files
+    env.yaml /app/
+    requirements.txt /app/
+    dependency/pyHisto /app/dependency/pyHisto
+    python /app/python
+    stain_color_map /app/stain_color_map
+    notebook /app/notebook
+
+%post
+    # Set working directory
+    cd /app
+
+    # Install system dependencies including Java (required for python-javabridge/histomicstk)
+    apt-get update && apt-get install -y \
+        git \
+        build-essential \
+        default-jdk \
+        && rm -rf /var/lib/apt/lists/*
+
+    # Set JAVA_HOME for python-javabridge
+    export JAVA_HOME=/usr/lib/jvm/default-java
+
+    # Create temporary env.yaml without pip requirements for pixi import
+    grep -v '\-r requirements.txt' env.yaml > env_pixi.yaml
+
+    # Initialize pixi from conda env.yaml and install dependencies (includes pytest)
+    pixi init --import env_pixi.yaml && pixi install -v
+
+    # Install histomicstk FIRST (this prevents pyHisto from trying to build it from source)
+    pixi run python -m pip install histomicstk --find-links https://girder.github.io/large_image_wheels
+
+    # Install Python dependencies from requirements.txt (excluding pyHisto and comments)
+    grep -v '^#' requirements.txt | grep -v '^$' | grep -v 'pyHisto' > /tmp/requirements_temp.txt && \
+        pixi run pip install -r /tmp/requirements_temp.txt && \
+        rm /tmp/requirements_temp.txt
+
+    # Install pyHisto in editable mode with --no-deps (since histomicstk is already installed)
+    pixi run pip install --no-deps -e ./dependency/pyHisto
+
+    # Clean up temporary file
+    rm env_pixi.yaml
+
+    # Create directories for data
+    mkdir -p /data
+
+%environment
+    export PIXI_PROJECT_ROOT=/app
+    export PATH=/app/.pixi/envs/default/bin:$PATH
+    export JAVA_HOME=/usr/lib/jvm/default-java
+
+%runscript
+    exec pixi shell "$@"
+
+%labels
+    Author Oxford Kir-Fritzsche Group
+    Version 1.0
+    Description Collagen quantification pipeline for PSR+FG histology images with pytest support
+
+%help
+    Automated collagen quantification pipeline for PSR (Picrosirius Red) + FG (Fast Green)
+    stained histology images using color deconvolution and multi-level Otsu thresholding.
+
+    Usage:
+        apptainer exec --bind /data:/data collagen-quant.sif bash python/decon.sh
+        apptainer exec --bind /data:/data collagen-quant.sif bash python/seg.sh
+        apptainer exec --bind /data:/data collagen-quant.sif pytest dependency/pyHisto/tests/
