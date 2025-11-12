@@ -8,3 +8,6 @@ __pycache__/
 
 # User-specific libvips configuration
 .vips_config.ini
+
+# outputs
+results/
