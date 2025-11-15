@@ -82,11 +82,11 @@ parse_toml_config() {
     fi
     
     # Parse TOML file using basic regex patterns
-    DATA_DIR=$(grep -E '^\s*data_dir\s*=' "$config_file" | cut -d'=' -f2 | sed 's/^[ \t]*"//;s/"[ \t]*$//' | xargs echo -n)
-    TILE=$(grep -E '^\s*tile_size\s*=' "$config_file" | cut -d'=' -f2 | sed 's/[ ]//g')
-    PADDING=$(grep -E '^\s*padding\s*=' "$config_file" | cut -d'=' -f2 | sed 's/[ ]//g')
-    CLASS=$(grep -E '^\s*class_id\s*=' "$config_file" | cut -d'=' -f2 | sed 's/[ ]//g')
-    CLASSES=$(grep -E '^\s*classes\s*=' "$config_file" | cut -d'=' -f2 | sed 's/[ ]//g')
+    DATA_DIR=$(grep -E '^\s*data_dir\s*=' "$config_file" | cut -d'=' -f2 | sed 's/^[ \t]*"//;s/".*$//' | xargs echo -n)
+    TILE=$(grep -E '^\s*tile_size\s*=' "$config_file" | cut -d'=' -f2 | sed 's/#.*$//;s/[ ]//g')
+    PADDING=$(grep -E '^\s*padding\s*=' "$config_file" | cut -d'=' -f2 | sed 's/#.*$//;s/[ ]//g')
+    CLASS=$(grep -E '^\s*class_id\s*=' "$config_file" | cut -d'=' -f2 | sed 's/#.*$//;s/[ ]//g')
+    CLASSES=$(grep -E '^\s*classes\s*=' "$config_file" | cut -d'=' -f2 | sed 's/#.*$//;s/[ ]//g')
 
     # Set defaults if parsing failed
     TILE=${TILE:-2048}
