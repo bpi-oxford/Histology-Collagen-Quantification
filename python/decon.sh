@@ -88,10 +88,10 @@ parse_toml_config() {
     fi
     
     # Parse TOML file using basic regex patterns
-    DATA_DIR=$(grep -E '^\s*data_dir\s*=' "$config_file" | cut -d'=' -f2 | sed 's/[" ]//g' | xargs)
-    STAIN_COLOR_MAP=$(grep -E '^\s*stain_map\s*=' "$config_file" | cut -d'=' -f2 | sed 's/[" ]//g' | xargs)
-    SCALING=$(grep -E '^\s*scaling\s*=' "$config_file" | cut -d'=' -f2 | sed 's/[ ]//g')
-    BATCH_NUM=$(grep -E '^\s*batch_size\s*=' "$config_file" | cut -d'=' -f2 | sed 's/[ ]//g')
+    DATA_DIR=$(grep -E '^\s*data_dir\s*=' "$config_file" | cut -d'=' -f2 | sed 's/^[ \t]*"//;s/".*$//' | xargs echo -n)
+    STAIN_COLOR_MAP=$(grep -E '^\s*stain_map\s*=' "$config_file" | cut -d'=' -f2 | sed 's/^[ \t]*"//;s/".*$//' | xargs echo -n)
+    SCALING=$(grep -E '^\s*scaling\s*=' "$config_file" | cut -d'=' -f2 | sed 's/#.*$//;s/[ ]//g')
+    BATCH_NUM=$(grep -E '^\s*batch_size\s*=' "$config_file" | cut -d'=' -f2 | sed 's/#.*$//;s/[ ]//g')
 
     # Parse boolean manual_mask
     local manual_mask_val=$(grep -E '^\s*manual_mask\s*=' "$config_file" | sed -E 's/^\s*manual_mask\s*=\s*(true|false).*/\1/')
