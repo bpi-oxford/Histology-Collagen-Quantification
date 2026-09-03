@@ -1,7 +1,9 @@
 output
 .vscode
 *.log
+log/
 data
+.snakemake/
 
 .DS_Store
 __pycache__/

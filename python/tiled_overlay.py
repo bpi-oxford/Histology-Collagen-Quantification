@@ -9,19 +9,11 @@ import argparse
 import os
 
 from pyHisto import io, utils
-
-def tile_overlay():
-    return
-
-def is_valid_file_or_directory(path):
-    """Check if the given path is a valid file or directory."""
-    if not os.path.exists(path):
-        raise argparse.ArgumentTypeError(f"Path '{path}' does not exist.")
-    return path
+from pyHisto.utils import is_valid_file_or_directory
 
 def get_args():
-    parser = argparse.ArgumentParser(prog="decon",
-                                     description="WSI collagen segmentation post processing script")
+    parser = argparse.ArgumentParser(prog="tiled_overlay",
+                                     description="Aggregate per-tile res.csv into a whole-slide collagen/tissue summary (res_all.csv)")
     parser.add_argument(
         "-d",
         dest="dir",
@@ -54,10 +46,9 @@ def get_args():
     return parser.parse_args()
 
 def main(args):
-    print("Reading image...")
     OUT_FILE = os.path.join(args.dir,"res_all.csv")
-    
-    collagen = tifffile.imread(os.path.join(args.dir,"collagen.ome.tiff"))
+
+    print("Reading per-tile results...")
     res = pd.read_csv(os.path.join(args.dir,"res.csv"))
 
     res_all = res[["collagen (px^2)","tissue (px^2)"]].sum()

@@ -69,6 +69,30 @@ import multiprocessing
 from multiprocessing import Pool
 from threading import Lock
 
+from pyHisto.io import pyramidal_ome_tiff_write
+from pyHisto.utils import is_valid_file_or_directory
+
+def _get_physical_pixel_area(path):
+    """
+    Physical pixel area (X * Y, in the OME-TIFF's declared units, typically um^2)
+    read from an OME-TIFF's embedded metadata, as written by
+    pyHisto.io.pyramidal_ome_tiff_write's resX/resY. Falls back to 1.0 (i.e.
+    raw pixel-count units) if the file has no readable OME physical pixel size.
+    """
+    try:
+        import ome_types
+        ome = ome_types.from_tiff(path)
+        pixels = ome.images[0].pixels
+        size_x = pixels.physical_size_x
+        size_y = pixels.physical_size_y
+        if not size_x or not size_y:
+            raise ValueError("physical_size_x/y not set in OME metadata")
+        return float(size_x) * float(size_y)
+    except Exception as e:
+        print(f"Warning: could not read physical pixel size from '{path}', "
+              f"falling back to raw pixel units (pixel_size=1): {e}")
+        return 1.0
+
 def iterate_over_regions(image, mask, tile_size, overlap_size):
     assert image.shape==mask.shape, "image and mask shape inconsistent"
 
@@ -89,81 +113,9 @@ def iterate_over_regions(image, mask, tile_size, overlap_size):
             else:
                 yield (x,y, x_max, y_max ,image_tile)
 
-def pyramidal_ome_tiff_write(image, path, resX=1.0, resY=1.0, units="µm", tile_size=2048, channel_colors=None):
-    """
-    Pyramidal ome tiff write is only support in 2D + C data.
-    Input dimension order has to be XYC
-    """
-
-    assert len(image.shape) == 3, "Input dimension order must be XYC, get array dimension of {}".format(len(image.shape)) 
-
-    size_x, size_y, size_c = image.shape
-    
-    if image.dtype == np.uint8:
-        format = "uchar"
-        data_type = "uint8"
-    elif image.dtype == np.uint16:
-        format = "ushort"
-        data_type = "uint16"
-    else:
-        raise TypeError(f"Expected an uint8 or uint16 image, but received {image.dtype}")
-
-    im_vips = pyvips.Image.new_from_memory(image.transpose(1,0,2).reshape(-1,size_c).tobytes(), size_x, size_y, bands=size_c, format=format) 
-    im_vips = pyvips.Image.arrayjoin(im_vips.bandsplit(), across=1) # for multichannel write
-    im_vips.set_type(pyvips.GValue.gint_type, "page-height", size_y)
-
-    # build minimal OME metadata
-    ome = OME()
-
-    if channel_colors is None:
-        channel_colors = [-1 for _ in range(size_c)]
-
-    img = Image(
-        id="Image:0",
-        name="resolution_1",
-        pixels=Pixels(
-            id="Pixels:0", type=data_type, dimension_order="XYZTC",
-            size_c=size_c, size_x=size_x, size_y=size_y, size_z=1, size_t=1, 
-            big_endian=False, metadata_only=True,
-            physical_size_x=resX,
-            physical_size_x_unit=units,
-            physical_size_y=resY,
-            physical_size_y_unit=units,
-            channels= [Channel(id=f"Channel:0:{i}", name=f"Ch_{i}", color=channel_colors[i]) for i in range(size_c)]
-        )
-    )
-
-    ome.images.append(img)
-
-    def eval_cb(image, progress):
-        pbar_filesave.update(progress.percent - pbar_filesave.n)
-
-    im_vips.set_progress(True)
-
-    pbar_filesave = tqdm(total=100, unit="Percent", desc="Writing pyramidal OME TIFF", position=0, leave=True)
-    im_vips.signal_connect('eval', eval_cb)
-    im_vips.set_type(pyvips.GValue.gstr_type, "image-description", ome.to_xml())
-
-    im_vips.write_to_file(
-        path, 
-        compression="lzw",
-        tile=True, 
-        tile_width=tile_size,
-        tile_height=tile_size,
-        pyramid=True,
-        depth="onetile",
-        subifd=True,
-        bigtiff=True
-        )
-
-def is_valid_file_or_directory(path):
-    """Check if the given path is a valid file or directory."""
-    if not os.path.exists(path):
-        raise argparse.ArgumentTypeError(f"Path '{path}' does not exist.")
-    return path
 
 def get_args():
-    parser = argparse.ArgumentParser(prog="decon",
+    parser = argparse.ArgumentParser(prog="seg",
                                      description="WSI collagen segmentation from PSR deconvolved channel")
     parser.add_argument(
         "-i", "--input", 
@@ -259,8 +211,7 @@ def main(args):
 
     # Area Quantification
     if args.stat:
-        # pixel_size = image.physical_pixel_sizes.X*image.physical_pixel_sizes.Y
-        pixel_size = 1*1
+        pixel_size = _get_physical_pixel_area(args.input)
 
         if args.tile:
             tiled_res = {
@@ -282,7 +233,6 @@ def main(args):
                 tiled_res["x1"].append(x_max)
                 tiled_res["y1"].append(y_max)
                 tiled_res["collagen (px^2)"].append(np.sum(image_tile)*pixel_size)
-                tiled_res
                 if args.mask:
                     tiled_res["tissue (px^2)"].append(np.sum(mask_tile))
                     tiled_res["collagen vs tissue (%)"].append(np.sum(image_tile)/np.sum(mask_tile)*100)
@@ -298,9 +248,8 @@ def main(args):
              }
             if mask is not None:
                 tissue_area = np.sum(mask)*pixel_size
-                res["tissue (px^2)"] = tissue_area,
-                res["collagen vs tissue (%)"] = collagen_area/tissue_area*100,
-                tissue_area = np.sum(mask)*pixel_size
+                res["tissue (px^2)"] = tissue_area
+                res["collagen vs tissue (%)"] = collagen_area/tissue_area*100
 
             res = pd.Series(res)
 

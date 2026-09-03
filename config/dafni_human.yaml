@@ -1,0 +1,25 @@
+# Config for the recovered Dafni human lung PSR cohort.
+# Data source: LaCie external HDD -> /mnt/RAID/kko/Data/Nan/Human_PSR_Dafni
+#              (symlinked into the repo root as ./data)
+
+data_dir: "data"
+output_dir: "output/Dafni_human"
+stain_map: "stain_color_map/human_lung_2023_reused_from_notebook.json"
+
+# decon.py params (defaults match the 2023 run for this cohort)
+scaling: 1
+batch_num: 16
+
+# seg.py params (defaults match the 2023 run for this cohort)
+tile_size: 2048
+padding: 0
+classes: 4
+class_id: 1
+
+# export_roi.py params
+# NOTE: collagen.ome.tiff is already at the (possibly downsampled) `scaling`
+# resolution used by decon.py, so roi_scaling should normally stay 1.0 unless
+# you specifically want ROI coordinates mapped back to full raw-scan resolution
+# (in which case set it equal to `scaling`).
+roi_scaling: 1.0
+roi_min_area: 0

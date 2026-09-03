@@ -58,6 +58,7 @@ jupyter = "*"
 jupyterlab = "*"
 matplotlib = "*"
 ipywidgets = "*"
+pytest = "*"
 
 [tool.pixi.environments]
 default = {solve-group = "default"}
@@ -68,3 +69,7 @@ decon = { cmd = "bash python/decon.sh", description = "Run interactive color dec
 seg = { cmd = "bash python/seg.sh", description = "Run interactive segmentation workflow" }
 notebook = { cmd = "jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root", description = "Start Jupyter Lab server" }
 install = { cmd = "pip install -e .", description = "Install package in editable mode" }
+test-pyhisto = { cmd = "pytest dependency/pyHisto/tests -v", description = "Run pyHisto unit/integration tests" }
+benchmark-czi = { cmd = "python benchmark/benchmark_czi_loading.py", description = "Benchmark CZI tile loading strategies (pass a .czi path as an arg)" }
+pipeline = { cmd = "bash -c 'mkdir -p log && snakemake --cores 4 -p \"$@\" 2>&1 | tee \"log/pipeline_$(date +%Y%m%dT%H%M%S).log\"' _", description = "Run the Snakemake pipeline, tee'd to a timestamped file under ./log/ (pass --configfile config/<cohort>.yaml and any target paths)" }
+pipeline-dag = { cmd = "snakemake --configfile config/dafni_human.yaml --dag | dot -Tpng -o pipeline_dag.png", description = "Render the pipeline DAG (requires graphviz's `dot`)" }

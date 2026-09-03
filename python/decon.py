@@ -19,17 +19,13 @@ from multiprocessing import Pool
 from threading import Lock
 
 from pyHisto import io, utils
+from pyHisto.io import pyramidal_ome_tiff_write
+from pyHisto.utils import is_valid_file_or_directory
 
 import os
 import shutil
 import argparse
 import json
-
-def is_valid_file_or_directory(path):
-    """Check if the given path is a valid file or directory."""
-    if not os.path.exists(path):
-        raise argparse.ArgumentTypeError(f"Path '{path}' does not exist.")
-    return path
 
 def get_args():
     parser = argparse.ArgumentParser(prog="decon",
@@ -365,73 +361,6 @@ def psr_background_removal(imDeconvolved, subscaling=100, closing=None, fill_hol
     psr_image_filtered[filled_tissue_mask==0] = 0
 
     return psr_image_filtered, filled_tissue_mask.astype(np.uint8)
-
-def pyramidal_ome_tiff_write(image, path, resX=1.0, resY=1.0, units="µm", tile_size=2048, channel_colors=None):
-    """
-    Pyramidal ome tiff write is only support in 2D + C data.
-    Input dimension order has to be XYC
-    """
-
-    assert len(image.shape) == 3, "Input dimension order must be XYC, get array dimension of {}".format(len(image.shape)) 
-
-    size_x, size_y, size_c = image.shape
-    
-    if image.dtype == np.uint8:
-        format = "uchar"
-        data_type = "uint8"
-    elif image.dtype == np.uint16:
-        format = "ushort"
-        data_type = "uint16"
-    else:
-        raise TypeError(f"Expected an uint8 or uint16 image, but received {image.dtype}")
-
-    im_vips = pyvips.Image.new_from_memory(image.transpose(1,0,2).reshape(-1,size_c).tobytes(), size_x, size_y, bands=size_c, format=format) 
-    im_vips = pyvips.Image.arrayjoin(im_vips.bandsplit(), across=1) # for multichannel write
-    im_vips.set_type(pyvips.GValue.gint_type, "page-height", size_y)
-
-    # build minimal OME metadata
-    ome = OME()
-
-    if channel_colors is None:
-        channel_colors = [-1 for _ in range(size_c)]
-
-    img = Image(
-        id="Image:0",
-        name="resolution_1",
-        pixels=Pixels(
-            id="Pixels:0", type=data_type, dimension_order="XYZTC",
-            size_c=size_c, size_x=size_x, size_y=size_y, size_z=1, size_t=1, 
-            big_endian=False, metadata_only=True,
-            physical_size_x=resX,
-            physical_size_x_unit=units,
-            physical_size_y=resY,
-            physical_size_y_unit=units,
-            channels= [Channel(id=f"Channel:0:{i}", name=f"Ch_{i}", color=channel_colors[i]) for i in range(size_c)]
-        )
-    )
-
-    ome.images.append(img)
-
-    def eval_cb(image, progress):
-        pbar_filesave.update(progress.percent - pbar_filesave.n)
-
-    im_vips.set_progress(True)
-
-    pbar_filesave = tqdm(total=100, unit="Percent", desc="Writing pyramidal OME TIFF", position=0, leave=True)
-    im_vips.signal_connect('eval', eval_cb)
-    im_vips.set_type(pyvips.GValue.gstr_type, "image-description", ome.to_xml())
-
-    im_vips.write_to_file(
-        path, 
-        compression="lzw",
-        tile=True, 
-        tile_width=tile_size,
-        tile_height=tile_size,
-        pyramid=True,
-        depth="onetile",
-        subifd=True,
-        bigtiff=True
-        )
 
 def main(args):
     print("Starting WSI Color Deconvolution...")
