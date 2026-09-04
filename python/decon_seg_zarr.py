@@ -34,7 +34,7 @@ import argparse
 import json
 import multiprocessing
 import os
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, as_completed, wait
 
 import numpy as np
 import pandas as pd
@@ -164,9 +164,38 @@ def main(args):
             initializer=_init_decon_seg_worker,
             initargs=(args.input, target_level, tissue_mask_coarse, stain_matrix, threshold, target_hw),
         ) as executor:
-            futures = [executor.submit(_decon_seg_one_region, region) for region in regions]
-            for future in tqdm(as_completed(futures), total=len(futures), desc="Decon + seg (chunk-wise, parallel)"):
-                _record_and_write(future.result())
+            # Bounded sliding window (same reasoning as stream_czi_to_ome_zarr's
+            # tile ingestion): submitting every chunk's future upfront let
+            # workers race arbitrarily far ahead of the single-threaded zarr
+            # writer, leaving an unbounded number of completed-but-unwritten
+            # chunk results (each ~4MB: psr+mask+collagen) buffered in memory
+            # at once for a full-res run with thousands of chunks.
+            regions_iter = iter(regions)
+            max_pending = max(2, n_workers * 2)
+
+            def _submit_next():
+                region = next(regions_iter, None)
+                if region is None:
+                    return None
+                return executor.submit(_decon_seg_one_region, region)
+
+            pending = set()
+            for _ in range(max_pending):
+                future = _submit_next()
+                if future is None:
+                    break
+                pending.add(future)
+
+            pbar = tqdm(total=len(regions), desc="Decon + seg (chunk-wise, parallel)")
+            while pending:
+                done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                for future in done:
+                    _record_and_write(future.result())
+                    pbar.update(1)
+                    next_future = _submit_next()
+                    if next_future is not None:
+                        pending.add(next_future)
+            pbar.close()
     else:
         for region in tqdm(regions, desc="Decon + seg (chunk-wise)"):
             rgb_chunk = _to_hwc(np.asarray(target_arr[region]))
