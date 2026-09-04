@@ -9,7 +9,7 @@ import argparse
 import json
 
 from pyHisto.io import stream_czi_to_ome_zarr
-from pyHisto.utils import is_valid_file_or_directory
+from pyHisto.utils import is_valid_file_or_directory, ensure_zarr_root_group
 
 
 def get_args():
@@ -76,6 +76,14 @@ def get_args():
 
 
 def main(args):
+    # `args.output` is a named child of a shared per-sample zarr store
+    # (e.g. <sample>/data.zarr/raw, sibling to psr/mask/collagen written by
+    # decon_seg_zarr.py) rather than its own top-level .zarr directory --
+    # ensure the shared root group exists first, without disturbing any
+    # sibling groups a previous pipeline stage may have already written.
+    import os
+    ensure_zarr_root_group(os.path.dirname(args.output.rstrip("/")))
+
     channel_names = args.channel_names.split(",") if args.channel_names else None
 
     chunk_shape = None

@@ -1,5 +1,5 @@
 """
-Collagen quantification pipeline: to_zarr -> decon -> seg -> summary -> ROI export.
+Collagen quantification pipeline: to_zarr -> decon_seg_zarr -> summary -> ROI export -> QC preview.
 
 Run via pixi (recommended):
     pixi run pipeline --configfile config/dafni_human.yaml
@@ -9,21 +9,34 @@ Or directly:
 
 Each sample's ".czi" file in `data_dir` is processed independently into
 `<output_dir>/<sample>/`:
-    raw.zarr                                            (to_zarr -- streamed,
-                                                          memory-safe multires
-                                                          OME-Zarr conversion)
-    PSR.ome.tiff, mask.ome.tiff, color_decon.ome.tiff   (decon)
-    collagen.ome.tiff, res.csv                          (seg, per-tile)
-    res_all.csv                                         (whole-slide summary)
-    collagen_roi.geojson                                (QuPath/Fiji ROI)
+    data.zarr/raw                              (to_zarr -- streamed, memory-safe
+                                                multires OME-Zarr conversion)
+    data.zarr/{psr,mask,collagen}, res.csv     (decon_seg_zarr -- chunk-wise
+                                                decon+seg reading directly from
+                                                data.zarr/raw; tissue mask + Otsu
+                                                threshold from the coarsest
+                                                pyramid level, decon/seg run
+                                                chunk-by-chunk at `scaling`)
+    res_all.csv                                (summary -- whole-slide collagen
+                                                /tissue ratio, aggregated from
+                                                res.csv)
+    collagen_roi.geojson                       (roi -- QuPath/Fiji-loadable ROI,
+                                                exported from data.zarr/collagen)
+    qc_preview.png                             (qc_preview -- overview + zoom
+                                                crops for visual QC)
 
-IMPORTANT: `decon`/`seg`/`summary`/`roi` below still read the raw CZI directly
-and build the full stitched image in memory (via pyHisto.io.czi_read) --
-this has been observed to OOM-kill on the smallest file in the Dafni human
-cohort on a 125GB-RAM machine. Do NOT run `rule all` (which only targets
-`raw.zarr` for now) with the old decon/seg targets until those rules are
-rewritten to read from `raw.zarr` in chunks instead. The `to_zarr` rule
-itself IS memory-safe (streams tile-by-tile via write_region()).
+All of raw/psr/mask/collagen live as named children of ONE zarr store per
+sample (data.zarr) rather than four separate top-level .zarr directories --
+easier to manage/move/archive as a single unit per sample. Each stage only
+ever overwrites its own named child (zarr's shutil.rmtree()/create_array(...,
+overwrite=True) is scoped to that child's subdirectory), so re-running one
+stage never disturbs siblings already written by another.
+
+decon.py/seg.py (the older CZI-in-memory scripts) are still available for
+standalone/manual use but are NOT wired into this pipeline: they build the
+full stitched image in memory and were observed to OOM-kill on the smallest
+file in this cohort on a 125GB-RAM machine. decon_seg_zarr.py replaces them
+here with a chunk-wise, memory-bounded implementation.
 """
 import glob
 import os
@@ -38,20 +51,17 @@ SAMPLES = [
 
 rule all:
     input:
-        # Only the memory-safe zarr conversion is enabled by default.
-        # decon/seg/summary/roi targets are commented out below pending
-        # their rewrite to read from raw.zarr instead of the raw CZI.
-        expand(os.path.join(OUTPUT_DIR, "{sample}", "raw.zarr", ".zattrs_marker"), sample=SAMPLES),
-        # expand(os.path.join(OUTPUT_DIR, "{sample}", "res_all.csv"), sample=SAMPLES),
-        # expand(os.path.join(OUTPUT_DIR, "{sample}", "collagen_roi.geojson"), sample=SAMPLES),
+        expand(os.path.join(OUTPUT_DIR, "{sample}", "res_all.csv"), sample=SAMPLES),
+        expand(os.path.join(OUTPUT_DIR, "{sample}", "collagen_roi.geojson"), sample=SAMPLES),
+        expand(os.path.join(OUTPUT_DIR, "{sample}", "qc_preview.png"), sample=SAMPLES),
 
 rule to_zarr:
     input:
         czi=os.path.join(DATA_DIR, "{sample}.czi"),
     output:
-        marker=os.path.join(OUTPUT_DIR, "{sample}", "raw.zarr", ".zattrs_marker"),
+        marker=os.path.join(OUTPUT_DIR, "{sample}", "data.zarr", "raw", ".zattrs_marker"),
     params:
-        zarr_path=os.path.join(OUTPUT_DIR, "{sample}", "raw.zarr"),
+        zarr_path=os.path.join(OUTPUT_DIR, "{sample}", "data.zarr", "raw"),
         scale_num_levels=config.get("zarr_scale_num_levels", 4),
         scale_factor=config.get("zarr_scale_factor", 2.0),
         # Shard size chosen to keep the zarr store's file count low, which
@@ -72,49 +82,26 @@ rule to_zarr:
         touch {output.marker}
         """
 
-rule decon:
+rule decon_seg_zarr:
     input:
-        czi=os.path.join(DATA_DIR, "{sample}.czi"),
+        marker=os.path.join(OUTPUT_DIR, "{sample}", "data.zarr", "raw", ".zattrs_marker"),
     output:
-        psr=os.path.join(OUTPUT_DIR, "{sample}", "PSR.ome.tiff"),
-        mask=os.path.join(OUTPUT_DIR, "{sample}", "mask.ome.tiff"),
-        color=os.path.join(OUTPUT_DIR, "{sample}", "color_decon.ome.tiff"),
-    params:
-        out_dir=os.path.join(OUTPUT_DIR, "{sample}"),
-        scaling=config["scaling"],
-        batch_num=config["batch_num"],
-        stain_map=config["stain_map"],
-    shell:
-        """
-        python3 python/decon.py \
-            -i {input.czi} \
-            -o {params.out_dir} \
-            -s {params.scaling} \
-            -bn {params.batch_num} \
-            --stain_map {params.stain_map}
-        """
-
-rule seg:
-    input:
-        psr=os.path.join(OUTPUT_DIR, "{sample}", "PSR.ome.tiff"),
-        mask=os.path.join(OUTPUT_DIR, "{sample}", "mask.ome.tiff"),
-    output:
-        collagen=os.path.join(OUTPUT_DIR, "{sample}", "collagen.ome.tiff"),
         stat=os.path.join(OUTPUT_DIR, "{sample}", "res.csv"),
+        collagen=directory(os.path.join(OUTPUT_DIR, "{sample}", "data.zarr", "collagen")),
     params:
-        tile_size=config["tile_size"],
-        padding=config["padding"],
+        zarr_path=os.path.join(OUTPUT_DIR, "{sample}", "data.zarr", "raw"),
+        out_dir=os.path.join(OUTPUT_DIR, "{sample}"),
+        stain_map=config["stain_map"],
+        scaling=config["scaling"],
         classes=config["classes"],
         class_id=config["class_id"],
     shell:
         """
-        python3 python/seg.py \
-            -i {input.psr} \
-            -m {input.mask} \
-            -o {output.collagen} \
-            -s {output.stat} \
-            -t {params.tile_size} \
-            -p {params.padding} \
+        python3 python/decon_seg_zarr.py \
+            -i {params.zarr_path} \
+            -o {params.out_dir} \
+            --stain_map {params.stain_map} \
+            -s {params.scaling} \
             --classes {params.classes} \
             -c {params.class_id}
         """
@@ -133,7 +120,7 @@ rule summary:
 
 rule roi:
     input:
-        collagen=os.path.join(OUTPUT_DIR, "{sample}", "collagen.ome.tiff"),
+        collagen=os.path.join(OUTPUT_DIR, "{sample}", "data.zarr", "collagen"),
     output:
         geojson=os.path.join(OUTPUT_DIR, "{sample}", "collagen_roi.geojson"),
     params:
@@ -146,4 +133,23 @@ rule roi:
             -o {output.geojson} \
             --scaling {params.scaling} \
             --min-area {params.min_area}
+        """
+
+rule qc_preview:
+    input:
+        stat=os.path.join(OUTPUT_DIR, "{sample}", "res.csv"),
+        collagen=os.path.join(OUTPUT_DIR, "{sample}", "data.zarr", "collagen"),
+    output:
+        png=os.path.join(OUTPUT_DIR, "{sample}", "qc_preview.png"),
+    params:
+        in_dir=os.path.join(OUTPUT_DIR, "{sample}"),
+        n_crops=config.get("qc_n_crops", 3),
+        czi_path=os.path.join(DATA_DIR, "{sample}.czi"),
+    shell:
+        """
+        python3 python/qc_preview.py \
+            -i {params.in_dir} \
+            -o {output.png} \
+            --n-crops {params.n_crops} \
+            --czi-path {params.czi_path}
         """

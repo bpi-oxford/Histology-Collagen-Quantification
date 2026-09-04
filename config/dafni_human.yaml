@@ -14,7 +14,7 @@ batch_num: 16
 tile_size: 2048
 padding: 0
 classes: 4
-class_id: 1
+class_id: 0  # matches seg.py default and the 2023 notebook run (thresholds[0]), not CLAUDE.md's "-c 1" example
 
 # export_roi.py params
 # NOTE: collagen.ome.tiff is already at the (possibly downsampled) `scaling`
@@ -22,4 +22,4 @@ class_id: 1
 # you specifically want ROI coordinates mapped back to full raw-scan resolution
 # (in which case set it equal to `scaling`).
 roi_scaling: 1.0
-roi_min_area: 0
+roi_min_area: 4.0  # drop sub-few-pixel noise polygons; raised after roi export OOM-killed at min_area=0 on the full-res, fragmented collagen mask
