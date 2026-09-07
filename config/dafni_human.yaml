@@ -6,6 +6,14 @@ data_dir: "data"
 output_dir: "output/Dafni_human"
 stain_map: "stain_color_map/human_lung_2023_reused_from_notebook.json"
 
+# czi_to_zarr.py params
+# Parallel tile reading has an unresolved, unbounded memory growth issue on
+# real data (confirmed via live RSS monitoring; writer-object recycling was
+# tested and ruled out as a fix -- root cause still uncharacterized, likely
+# in the aicspylibczi native read path). Sequential mode is slower but has
+# not shown this growth, so it's the default until the leak is root-caused.
+zarr_parallel: false
+
 # decon.py params (defaults match the 2023 run for this cohort)
 scaling: 1
 batch_num: 16

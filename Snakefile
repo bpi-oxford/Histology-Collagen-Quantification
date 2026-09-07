@@ -70,6 +70,11 @@ rule to_zarr:
         # Linux/Mac storage) -- see stream_czi_to_ome_zarr's docstring.
         shard_size=config.get("zarr_shard_size", 4096),
         chunk_size=config.get("zarr_chunk_size", 1024),
+        # Parallel tile reading has an unresolved memory growth issue on
+        # real data (see stream_czi_to_ome_zarr's write-loop comments) --
+        # default stays parallel (faster) but this can be flipped to
+        # sequential via config until it's root-caused.
+        no_parallel_flag="--no-parallel" if not config.get("zarr_parallel", True) else "",
     shell:
         """
         python3 python/czi_to_zarr.py \
@@ -78,7 +83,8 @@ rule to_zarr:
             --scale-num-levels {params.scale_num_levels} \
             --scale-factor {params.scale_factor} \
             --chunk-size {params.chunk_size} \
-            --shard-size {params.shard_size}
+            --shard-size {params.shard_size} \
+            {params.no_parallel_flag}
         touch {output.marker}
         """
 
