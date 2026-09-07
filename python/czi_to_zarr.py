@@ -72,6 +72,15 @@ def get_args():
         metavar="NAMES",
         default=None
     )
+    parser.add_argument(
+        "--no-parallel",
+        dest="parallel",
+        action="store_false",
+        default=True,
+        help="Disable parallel tile reading (sequential, single process). Fallback while a "
+             "memory growth issue specific to parallel=True on real data is unresolved -- "
+             "slower, but not known to exhibit that growth."
+    )
     return parser.parse_args()
 
 
@@ -95,6 +104,7 @@ def main(args):
         scale_num_levels=args.scale_num_levels,
         scale_factor=args.scale_factor,
         channel_names=channel_names,
+        parallel=args.parallel,
     )
     if args.chunk_size is not None or args.shard_size is not None:
         # Defer to stream_czi_to_ome_zarr's own n_channels detection by
