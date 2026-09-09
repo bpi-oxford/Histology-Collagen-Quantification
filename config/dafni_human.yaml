@@ -7,12 +7,13 @@ output_dir: "output/Dafni_human"
 stain_map: "stain_color_map/human_lung_2023_reused_from_notebook.json"
 
 # czi_to_zarr.py params
-# Parallel tile reading has an unresolved, unbounded memory growth issue on
-# real data (confirmed via live RSS monitoring; writer-object recycling was
-# tested and ruled out as a fix -- root cause still uncharacterized, likely
-# in the aicspylibczi native read path). Sequential mode is slower but has
-# not shown this growth, so it's the default until the leak is root-caused.
-zarr_parallel: false
+# Parallel tile reading previously showed unbounded-looking memory growth on
+# real data; root-caused as the in-flight sliding window being sized in
+# *batches* rather than *bytes* (fixed in pyHisto, see stream_czi_to_ome_zarr's
+# docstring/comments) -- confirmed bounded memory and byte-identical output
+# after the fix. Parallel is safe and ~6x+ faster than the --no-parallel
+# fallback, so it's back on by default.
+zarr_parallel: true
 
 # decon.py params (defaults match the 2023 run for this cohort)
 scaling: 1

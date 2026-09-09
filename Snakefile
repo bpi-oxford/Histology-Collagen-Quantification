@@ -52,8 +52,15 @@ SAMPLES = [
 rule all:
     input:
         expand(os.path.join(OUTPUT_DIR, "{sample}", "res_all.csv"), sample=SAMPLES),
-        expand(os.path.join(OUTPUT_DIR, "{sample}", "collagen_roi.geojson"), sample=SAMPLES),
         expand(os.path.join(OUTPUT_DIR, "{sample}", "qc_preview.png"), sample=SAMPLES),
+        # collagen_roi.geojson intentionally excluded here: ROI vectorization
+        # (rasterio.features.shapes() over the full-res collagen mask) can
+        # blow up to 80GB+ RSS on samples with a highly fragmented mask,
+        # threatening the whole (shared) machine -- confirmed in practice
+        # crashing a batch run. Quantification (res_all.csv), the collagen/
+        # tissue/mask arrays, and qc_preview.png (the actual deliverables)
+        # never depend on ROI export succeeding. Run `rule roi` per-sample
+        # on demand instead: `pixi run snakemake <output_dir>/<sample>/collagen_roi.geojson`.
 
 rule to_zarr:
     input:
